@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>РЕЖИССЁР</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Manrope", "Space Grotesk", "Sora", sans-serif;
+        --bg-1: #080b14;
+        --bg-2: #10182a;
+        --panel: rgba(12, 17, 30, 0.88);
+        --line: rgba(163, 211, 255, 0.22);
+        --line-soft: rgba(163, 211, 255, 0.12);
+        --text: #eef4ff;
+        --muted: rgba(230, 240, 255, 0.72);
+        --accent: #5eead4;
+        --accent-2: #78a7ff;
+        --danger: #ff5f78;
+        --warning: #ffcb66;
+      }
+
+      body {
+        margin: 0;
+        background:
+          radial-gradient(120% 100% at 12% 0%, #1f2e4a 0%, transparent 60%),
+          radial-gradient(120% 100% at 92% 100%, #3c2135 0%, transparent 58%),
+          linear-gradient(170deg, var(--bg-2), var(--bg-1));
+        color: var(--text);
+        padding: 10px;
+      }
+
+      .widget {
+        width: 320px;
+        max-width: 100%;
+        height: 500px;
+        margin: 0 auto;
+        overflow: auto;
+        border-radius: 16px;
+      }
+
+      .card {
+        border: 1px solid var(--line-soft);
+        background: linear-gradient(180deg, rgba(12, 18, 31, 0.95), var(--panel));
+        border-radius: 12px;
+        padding: 10px;
+        margin-bottom: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+      }
+
+      .top-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .title {
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      .sub {
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .pill {
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(16, 23, 40, 0.9);
+        padding: 4px 8px;
+        font-size: 10px;
+        font-weight: 700;
+        color: #d8e8ff;
+      }
+
+      .live-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: #ffadba;
+        font-weight: 700;
+        font-size: 11px;
+      }
+
+      .live-indicator .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--danger);
+        box-shadow: 0 0 0 0 rgba(255, 95, 120, 0.6);
+        animation: livePulse 1.3s infinite;
+      }
+
+      @keyframes livePulse {
+        0% { box-shadow: 0 0 0 0 rgba(255, 95, 120, 0.5); }
+        70% { box-shadow: 0 0 0 10px rgba(255, 95, 120, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 95, 120, 0); }
+      }
+
+      .lead-name {
+        margin-top: 8px;
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .lead-meta {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 3px;
+      }
+
+      .pressure-track {
+        margin-top: 8px;
+        height: 10px;
+        border-radius: 999px;
+        overflow: hidden;
+        border: 1px solid var(--line-soft);
+        background: rgba(7, 12, 20, 0.75);
+      }
+
+      .pressure-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #64e0ff, #89a7ff, #ffa4b2);
+        transition: width 220ms ease;
+      }
+
+      .pressure-track.is-critical {
+        animation: pressureBlink 0.9s infinite;
+        border-color: rgba(255, 95, 120, 0.6);
+      }
+
+      @keyframes pressureBlink {
+        0%, 100% { box-shadow: 0 0 0 rgba(255, 95, 120, 0); }
+        50% { box-shadow: 0 0 14px rgba(255, 95, 120, 0.45); }
+      }
+
+      .grid {
+        display: grid;
+        gap: 8px;
+      }
+
+      .group {
+        border: 1px solid var(--line-soft);
+        border-radius: 10px;
+        padding: 8px;
+        background: rgba(9, 14, 24, 0.82);
+      }
+
+      .group-title {
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.07em;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+
+      .buttons {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+
+      .cmd-btn {
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(17, 25, 44, 0.95), rgba(11, 17, 29, 0.95));
+        color: #e6f1ff;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 8px 6px;
+        cursor: pointer;
+        transition: transform 110ms ease, border-color 110ms ease;
+      }
+
+      .cmd-btn:active,
+      .cmd-btn.is-pressed {
+        transform: translateY(1px) scale(0.98);
+        border-color: rgba(94, 234, 212, 0.8);
+      }
+
+      .cmd-btn[disabled] {
+        cursor: not-allowed;
+        opacity: 0.58;
+      }
+
+      .goal-list {
+        display: grid;
+        gap: 6px;
+      }
+
+      .goal-card {
+        border: 1px solid var(--line-soft);
+        border-radius: 10px;
+        padding: 8px;
+        background: rgba(8, 12, 20, 0.82);
+        cursor: pointer;
+      }
+
+      .goal-card.is-selected {
+        border-color: rgba(94, 234, 212, 0.8);
+        box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.35);
+      }
+
+      .goal-name {
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .goal-meta {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .goal-progress {
+        margin-top: 6px;
+        height: 7px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .goal-progress > span {
+        display: block;
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #66ffd5, #5eb2ff);
+        transition: width 220ms ease;
+      }
+
+      .input-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 6px;
+      }
+
+      .input,
+      select {
+        width: 100%;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: rgba(10, 15, 25, 0.9);
+        color: #fff;
+        font-size: 12px;
+        padding: 8px;
+        outline: none;
+      }
+
+      .btn {
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: rgba(9, 14, 24, 0.92);
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 8px 10px;
+        cursor: pointer;
+      }
+
+      .btn.primary {
+        border: none;
+        color: #101421;
+        background: linear-gradient(110deg, #ffcf70, #ff8f66);
+      }
+
+      .btn[disabled] {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      .small {
+        font-size: 10px;
+        color: var(--muted);
+      }
+
+      .list {
+        margin: 6px 0 0;
+        padding-left: 16px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .toast-stack {
+        position: sticky;
+        bottom: 0;
+      }
+
+      .toast {
+        margin-top: 6px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: rgba(8, 12, 20, 0.92);
+        padding: 7px 8px;
+        font-size: 11px;
+      }
+
+      .hidden {
+        display: none;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/menu-CdQY-m3q.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/shared-BaN-rwBn.js">
+  </head>
+  <body>
+    <div class="widget" id="widget">
+      <section class="card">
+        <div class="top-row">
+          <div>
+            <div class="title">РЕЖИССЁР</div>
+            <div class="sub" id="role-label">Роль: зритель</div>
+          </div>
+          <div class="pill" id="phase-pill">ПРЕДПРОДАКШН</div>
+        </div>
+
+        <div class="top-row" style="margin-top: 8px;">
+          <div class="live-indicator" id="live-indicator">
+            <span class="dot"></span>
+            <span>LIVE</span>
+          </div>
+          <div class="small" id="session-tips">0 / 50 тк</div>
+        </div>
+
+        <div class="lead-name" id="director-name">Режиссёр: Casting...</div>
+        <div class="lead-meta" id="director-power">Сила: 0 тк</div>
+        <div class="lead-meta" id="challenger-line">Претендент: None (0 тк)</div>
+        <div class="pressure-track" id="pressure-track">
+          <div class="pressure-fill" id="pressure-fill"></div>
+        </div>
+        <div class="small" id="pressure-text">Разрыв безопасный</div>
+        <div class="small" id="tenure-text"></div>
+      </section>
+
+      <section class="card" id="director-console">
+        <div class="title" style="font-size: 13px;">Режиссёрский Пульт</div>
+        <div class="sub">Команды доступны только текущему Режиссёру</div>
+        <div class="grid" id="console-groups" style="margin-top: 8px;"></div>
+      </section>
+
+      <section class="card">
+        <div class="title" style="font-size: 13px;">Производственная Доска</div>
+        <div class="sub">Позиции tip menu, сортировка по близости закрытия</div>
+        <div id="goals-list" class="goal-list" style="margin-top: 8px;"></div>
+      </section>
+
+      <section class="card" id="tip-controls">
+        <div class="title" style="font-size: 13px;">Типы и Перераспределение</div>
+        <div class="small" id="selected-goal-label" style="margin-top: 6px;"></div>
+
+        <div class="input-row" style="margin-top: 6px;">
+          <input id="tip-amount" class="input" type="number" min="1" step="1" value="1" />
+          <button id="tip-button" class="btn primary">Типнуть</button>
+        </div>
+
+        <div class="small" style="margin-top: 8px;">Мои распределения</div>
+        <ul id="self-allocations" class="list"></ul>
+
+        <div class="small" style="margin-top: 8px;">Перекинуть свои токены между позициями</div>
+        <div class="input-row" style="margin-top: 6px; grid-template-columns: 1fr 1fr;">
+          <select id="realloc-from"></select>
+          <select id="realloc-to"></select>
+        </div>
+        <div class="input-row" style="margin-top: 6px;">
+          <input id="realloc-amount" class="input" type="number" min="1" step="1" value="1" />
+          <button id="realloc-button" class="btn">Перекинуть</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="title" style="font-size: 13px;">Исполнение и Очередь</div>
+        <div class="small" id="current-performance" style="margin-top: 6px;">Сейчас: ожидание</div>
+        <div class="small" style="margin-top: 6px;">Очередь команд:</div>
+        <ul id="queue-list" class="list"></ul>
+        <div class="small" style="margin-top: 6px;">Последние команды режиссёра:</div>
+        <ul id="command-history" class="list"></ul>
+      </section>
+
+      <section class="card">
+        <div class="title" style="font-size: 13px;">Активность</div>
+        <ul id="activity-feed" class="list"></ul>
+      </section>
+
+      <div id="toast-stack" class="toast-stack"></div>
+    </div>
+
+  </body>
+</html>

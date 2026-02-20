@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>РЕЖИССЁР Settings</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Manrope", "Space Grotesk", "Sora", sans-serif;
+        --line: rgba(162, 210, 255, 0.18);
+        --muted: rgba(226, 240, 255, 0.72);
+      }
+
+      body {
+        margin: 0;
+        color: #edf4ff;
+        background:
+          radial-gradient(120% 100% at 16% 0%, rgba(76, 116, 184, 0.36), transparent 60%),
+          radial-gradient(120% 100% at 86% 100%, rgba(139, 52, 90, 0.3), transparent 58%),
+          linear-gradient(170deg, #121a2b, #090e17);
+        padding: 14px;
+      }
+
+      .shell {
+        max-width: 860px;
+        margin: 0 auto;
+      }
+
+      .card {
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: rgba(10, 15, 25, 0.9);
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+
+      .title {
+        font-size: 22px;
+        font-weight: 800;
+      }
+
+      .sub {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .grid-3,
+      .grid-2 {
+        display: grid;
+        gap: 9px;
+      }
+
+      .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+      .field {
+        display: grid;
+        gap: 5px;
+      }
+
+      label {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      input,
+      textarea {
+        width: 100%;
+        border-radius: 9px;
+        border: 1px solid var(--line);
+        background: rgba(8, 12, 20, 0.9);
+        color: #fff;
+        padding: 9px;
+        font-size: 13px;
+        outline: none;
+      }
+
+      textarea {
+        min-height: 100px;
+        resize: vertical;
+      }
+
+      .hint {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .pill {
+        display: inline-flex;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 207, 112, 0.42);
+        background: rgba(255, 207, 112, 0.14);
+        color: #ffdca1;
+        font-size: 11px;
+        padding: 4px 8px;
+        margin-right: 6px;
+      }
+
+      #status {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/settings-Bxp6AD3D.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/shared-BaN-rwBn.js">
+  </head>
+  <body>
+    <div class="shell">
+      <div class="card">
+        <div class="title">РЕЖИССЁР</div>
+        <div class="sub">MVP config: лидерство, пульт, tip menu и backend</div>
+      </div>
+
+      <div class="card">
+        <div class="grid-3">
+          <div class="field">
+            <label for="preproduction-goal">Предпродакшн Goal</label>
+            <input id="preproduction-goal" type="number" min="10" value="50" />
+            <div class="hint">После этого порога включается LIVE.</div>
+          </div>
+          <div class="field">
+            <label for="overtake-margin">Overtake Margin</label>
+            <input id="overtake-margin" type="number" min="1" value="10" />
+            <div class="hint">Насколько нужно перебить режиссёра.</div>
+          </div>
+          <div class="field">
+            <label for="min-tenure-sec">Tenure (сек)</label>
+            <input id="min-tenure-sec" type="number" min="5" value="15" />
+            <div class="hint">Иммунитет после назначения.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="grid-3">
+          <div class="field">
+            <label for="command-duration-sec">Длительность команды (сек)</label>
+            <input id="command-duration-sec" type="number" min="5" value="20" />
+          </div>
+          <div class="field">
+            <label for="command-cooldown-sec">Cooldown команды (сек)</label>
+            <input id="command-cooldown-sec" type="number" min="1" value="6" />
+          </div>
+          <div class="field">
+            <label for="tipmenu-refresh-sec">Обновление tip menu (сек)</label>
+            <input id="tipmenu-refresh-sec" type="number" min="5" value="20" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="field">
+          <label for="fallback-tip-menu">Fallback tip menu (каждая строка: Название|Цена)</label>
+          <textarea id="fallback-tip-menu">Крупный план|25
+Танец|40
+В глаза|30</textarea>
+          <div class="hint">Используется только если метод SDK tip menu временно недоступен.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="grid-2">
+          <div class="field">
+            <label for="backend-url">Backend URL</label>
+            <input id="backend-url" type="url" placeholder="https://your-app.vercel.app" />
+          </div>
+          <div class="field">
+            <label for="backend-api-key">Backend API key</label>
+            <input id="backend-api-key" type="password" placeholder="x-api-key" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <span class="pill" id="preview-goal">Goal 50</span>
+        <span class="pill" id="preview-margin">Margin 10</span>
+        <span class="pill" id="preview-tenure">Tenure 15s</span>
+        <span class="pill" id="preview-command">Command 20s / 6s cd</span>
+      </div>
+
+      <div id="status">Ожидание сохранения...</div>
+    </div>
+
+  </body>
+</html>

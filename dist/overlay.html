@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>РЕЖИССЁР Overlay</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Manrope", "Space Grotesk", "Sora", sans-serif;
+        --line: rgba(168, 212, 255, 0.24);
+        --muted: rgba(230, 241, 255, 0.78);
+        --danger: #ff5f78;
+      }
+
+      body {
+        margin: 0;
+        background: transparent;
+        color: #f1f7ff;
+        padding: 8px;
+      }
+
+      .shell {
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background:
+          radial-gradient(120% 100% at 6% 0%, rgba(76, 117, 182, 0.35), transparent 60%),
+          radial-gradient(120% 100% at 94% 100%, rgba(149, 45, 84, 0.33), transparent 58%),
+          rgba(9, 13, 22, 0.72);
+        backdrop-filter: blur(14px);
+        padding: 10px;
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+      }
+
+      .shell.flash {
+        animation: flashOverlay 650ms ease;
+      }
+
+      @keyframes flashOverlay {
+        0% { box-shadow: 0 0 0 rgba(255, 206, 115, 0); }
+        40% { box-shadow: 0 0 24px rgba(255, 206, 115, 0.75); }
+        100% { box-shadow: 0 0 0 rgba(255, 206, 115, 0); }
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .title {
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      .pill {
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(11, 17, 29, 0.9);
+        padding: 4px 8px;
+        font-size: 10px;
+        font-weight: 700;
+      }
+
+      .live {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 6px;
+        font-size: 10px;
+        font-weight: 700;
+        color: #ffb4c0;
+      }
+
+      .live .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--danger);
+        box-shadow: 0 0 0 0 rgba(255, 95, 120, 0.58);
+        animation: pulse 1.25s infinite;
+      }
+
+      @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(255, 95, 120, 0.58); }
+        70% { box-shadow: 0 0 0 10px rgba(255, 95, 120, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 95, 120, 0); }
+      }
+
+      .meta {
+        margin-top: 6px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .track {
+        margin-top: 6px;
+        height: 8px;
+        border-radius: 999px;
+        overflow: hidden;
+        border: 1px solid rgba(168, 212, 255, 0.16);
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .track.critical {
+        border-color: rgba(255, 95, 120, 0.65);
+        animation: alert 0.85s infinite;
+      }
+
+      @keyframes alert {
+        0%, 100% { box-shadow: 0 0 0 rgba(255, 95, 120, 0); }
+        50% { box-shadow: 0 0 10px rgba(255, 95, 120, 0.42); }
+      }
+
+      .track > span {
+        display: block;
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #66e0ff, #8fa9ff, #ff9db0);
+        transition: width 220ms ease;
+      }
+
+      .section {
+        margin-top: 8px;
+        border-top: 1px solid rgba(168, 212, 255, 0.15);
+        padding-top: 8px;
+      }
+
+      .section-title {
+        font-size: 10px;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        font-weight: 800;
+      }
+
+      .current {
+        margin-top: 4px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .list {
+        margin: 5px 0 0;
+        padding-left: 14px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .actions {
+        margin-top: 8px;
+      }
+
+      .btn {
+        border-radius: 7px;
+        border: 1px solid var(--line);
+        background: rgba(10, 14, 23, 0.88);
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 6px 8px;
+        cursor: pointer;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/overlay-Mx3yvcma.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/shared-BaN-rwBn.js">
+  </head>
+  <body>
+    <div class="shell" id="shell">
+      <div class="row">
+        <div class="title">РЕЖИССЁР LIVE</div>
+        <div class="pill" id="phase-pill">ПРЕДПРОДАКШН</div>
+      </div>
+
+      <div class="live" id="live-indicator">
+        <span class="dot"></span>
+        <span>LIVE</span>
+      </div>
+
+      <div class="meta" id="director-line">Режиссёр: Casting...</div>
+      <div class="meta" id="challenger-line">Претендент: None</div>
+      <div class="track" id="pressure-track"><span id="pressure-fill"></span></div>
+      <div class="meta" id="pressure-text"></div>
+
+      <div class="section">
+        <div class="section-title">ТЕКУЩИЙ ПЕРФОРМАНС</div>
+        <div class="current" id="current-performance">Ожидание</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">ОЧЕРЕДЬ КОМАНД</div>
+        <ul id="queue-list" class="list"></ul>
+      </div>
+
+      <div class="section">
+        <div class="section-title">КОМАНДЫ РЕЖИССЁРА</div>
+        <ul id="command-history" class="list"></ul>
+      </div>
+
+      <div class="section">
+        <div class="section-title">АКТИВНОСТЬ</div>
+        <ul id="activity-feed" class="list"></ul>
+      </div>
+
+      <div class="actions">
+        <button id="open-menu" class="btn">Открыть таб</button>
+      </div>
+    </div>
+
+  </body>
+</html>

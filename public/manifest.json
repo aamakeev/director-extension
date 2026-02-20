@@ -1,0 +1,13 @@
+{
+  "version": "v2.0",
+  "views": {
+    "settings": "settings.html",
+    "slots": ["mainGameFun", "rightOverlay", "background"],
+    "pages": {
+      "menu": "menu.html",
+      "overlay": "overlay.html",
+      "background": "background.html"
+    },
+    "resolveSlotPageScript": "resolveSlotPage.js"
+  }
+}

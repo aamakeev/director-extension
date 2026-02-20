@@ -1,0 +1,13 @@
+{
+  "name": "director-extension-backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.35.3"
+  }
+}
