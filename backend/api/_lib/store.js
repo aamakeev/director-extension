@@ -5,19 +5,36 @@ const ALLOW_MEMORY_FALLBACK = String(process.env.ALLOW_MEMORY_FALLBACK || '')
   .trim()
   .toLowerCase() === 'true';
 
+const normalizeEnvValue = (value) => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+
+  const isDoubleQuoted = normalized.startsWith('"') && normalized.endsWith('"');
+  const isSingleQuoted = normalized.startsWith("'") && normalized.endsWith("'");
+
+  if (isDoubleQuoted || isSingleQuoted) {
+    return normalized.slice(1, -1).trim();
+  }
+
+  return normalized;
+};
+
 const memoryStore = globalThis.__directorExtensionMemoryStore || new Map();
 if (!globalThis.__directorExtensionMemoryStore) {
   globalThis.__directorExtensionMemoryStore = memoryStore;
 }
 
-const redisRestUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-const redisRestToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+const redisRestUrl = normalizeEnvValue(process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL);
+const redisRestToken = normalizeEnvValue(process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN);
 const hasKvEnv = Boolean(redisRestUrl && redisRestToken);
 let redis = null;
 
 if (hasKvEnv) {
   try {
-    redis = Redis.fromEnv();
+    redis = new Redis({
+      url: redisRestUrl,
+      token: redisRestToken
+    });
   } catch {
     redis = null;
   }
