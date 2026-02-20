@@ -10,7 +10,9 @@ if (!globalThis.__directorExtensionMemoryStore) {
   globalThis.__directorExtensionMemoryStore = memoryStore;
 }
 
-const hasKvEnv = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+const redisRestUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+const redisRestToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+const hasKvEnv = Boolean(redisRestUrl && redisRestToken);
 let redis = null;
 
 if (hasKvEnv) {

@@ -11,7 +11,11 @@ Backend для экстеншна `РЕЖИССЁР`.
 
 ## Storage
 
-- Если заданы `KV_REST_API_URL` и `KV_REST_API_TOKEN`, используется Vercel KV/Upstash Redis (рекомендуется для продакшена).
+- Рекомендуемый вариант в Vercel Marketplace: **Upstash (Redis)**.
+- Backend поддерживает оба набора env:
+  - `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` (Marketplace Upstash),
+  - `KV_REST_API_URL` + `KV_REST_API_TOKEN` (старый формат Vercel KV).
+- Если заданы переменные любого из наборов выше, используется Redis (персистентно).
 - Если KV не задан:
   - по умолчанию backend возвращает `503` на работу с сессиями (чтобы не было тихой потери данных),
   - для локальной отладки можно включить `ALLOW_MEMORY_FALLBACK=true` (неперсистентно между cold start).
@@ -22,7 +26,8 @@ Backend для экстеншна `РЕЖИССЁР`.
 - `BACKEND_API_KEY` — опциональный ключ. Если задан, клиент должен передавать его в `x-api-key`.
 - `CORS_ORIGINS` — `*` или список origin через запятую.
 - `SESSION_TTL_SEC` — TTL сессии в секундах (по умолчанию 259200).
-- `KV_REST_API_URL` / `KV_REST_API_TOKEN` — для Vercel KV.
+- `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` — для Upstash (предпочтительно).
+- `KV_REST_API_URL` / `KV_REST_API_TOKEN` — альтернативный/legacy формат Vercel KV.
 - `ALLOW_MEMORY_FALLBACK` — только для локальной отладки (`true`/`false`).
 
 ## Deploy на Vercel
