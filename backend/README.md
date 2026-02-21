@@ -5,6 +5,7 @@ Backend для экстеншна `РЕЖИССЁР`.
 ## Endpoints
 
 - `GET /api/health`
+- `GET /api/tip-menu?username=<model_username>&host=<optional_origin>`
 - `GET /api/sessions/:sessionId`
 - `PUT /api/sessions/:sessionId` с телом `{ "state": { ... } }`
 - `DELETE /api/sessions/:sessionId`
@@ -25,6 +26,7 @@ Backend для экстеншна `РЕЖИССЁР`.
 
 - `BACKEND_API_KEY` — опциональный ключ. Если задан, клиент должен передавать его в `x-api-key`.
 - `CORS_ORIGINS` — `*` или список origin через запятую.
+- `TIP_MENU_ORIGINS` — опциональный список origin для fallback tip menu, через запятую.
 - `SESSION_TTL_SEC` — TTL сессии в секундах (по умолчанию 259200).
 - `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` — для Upstash (предпочтительно).
 - `KV_REST_API_URL` / `KV_REST_API_TOKEN` — альтернативный/legacy формат Vercel KV.
