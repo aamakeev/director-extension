@@ -1,0 +1,14 @@
+{
+  "version": "v2.0",
+  "views": {
+    "slots": ["mainGameFun", "background", "rightOverlay"],
+    "pages": {
+      "mainGameFun": "mainGameFun.html",
+      "backgroundModel": "backgroundModel.html",
+      "backgroundViewer": "backgroundViewer.html",
+      "rightOverlay": "rightOverlay.html"
+    },
+    "settings": "settings.html",
+    "resolveSlotPageScript": "resolveSlotPage.js"
+  }
+}

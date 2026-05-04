@@ -1,0 +1,21 @@
+{
+  "name": "director",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "mocks": "vite --mode mocks",
+    "build": "tsc && vite build",
+    "build:mocks": "vite build --mode mocks",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@stripchatdev/ext-helper": "0.1.19",
+    "preact": "10.25.4"
+  },
+  "devDependencies": {
+    "vite": "6.3.5",
+    "typescript": "5.8.2",
+    "@preact/preset-vite": "2.10.5"
+  }
+}

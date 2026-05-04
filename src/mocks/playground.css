@@ -1,0 +1,208 @@
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #0e0e10;
+  color: #f8f8f8;
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica,
+    Arial, sans-serif;
+}
+
+html[data-theme='light'] {
+  background: #f4f6fb;
+  color: #1a1a1a;
+}
+
+.pg-shell {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  height: 100vh;
+}
+
+/* ---------- sidebar ---------- */
+
+.pg-side {
+  background: #1a1a1d;
+  color: #f8f8f8;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.pg-side h1 {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.pg-side .pg-hint,
+.pg-side .pg-tip {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.5;
+}
+
+.pg-side .pg-tip {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.pg-side section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pg-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.pg-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pg-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pg-pill {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.pg-pill:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.pg-pill.is-on {
+  background: #c97a3a;
+  border-color: #c97a3a;
+  color: #fff;
+}
+
+.pg-row-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.pg-row-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.pg-row-btn.is-on {
+  background: rgba(201, 122, 58, 0.18);
+  border-color: rgba(201, 122, 58, 0.55);
+}
+
+.pg-row-btn-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pg-row-btn-sub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ---------- stage ---------- */
+
+.pg-main {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.pg-stage {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  padding: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.pg-stage--tab {
+  background: #262626;
+}
+
+html[data-theme='light'] .pg-stage--tab {
+  background: #f7f7f5;
+}
+
+.pg-stage--settings {
+  background: #262626;
+}
+
+html[data-theme='light'] .pg-stage--settings {
+  background: #f7f7f5;
+}
+
+.pg-stage--overlay {
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+}
+
+.pg-stage--overlay.pg-stage--bg-stream {
+  background:
+    radial-gradient(60% 80% at 30% 50%, rgba(201, 122, 58, 0.18), transparent 70%),
+    url('https://picsum.photos/seed/director-stream/1200/800') center/cover no-repeat,
+    #1a1a1d;
+}
+
+.pg-stage--overlay.pg-stage--bg-dark {
+  background: #1a1a1d;
+}
+
+.pg-stage--overlay.pg-stage--bg-light {
+  background: #f7f7f5;
+}
+
+.pg-stage-frame {
+  width: 100%;
+  max-width: 640px;
+}
+
+.pg-stage--overlay .pg-stage-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  padding: 0;
+}
