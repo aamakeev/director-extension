@@ -1,9 +1,10 @@
-import type { TEvents } from '@stripchatdev/ext-helper';
+import type { TEvents, TV1TipMenu } from '@stripchatdev/ext-helper';
 import { createExtHelper } from '@stripchatdev/ext-helper';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { COMMAND_GROUPS } from '../../shared/commands';
 import { DEFAULT_SETTINGS, normalizeSettings, type DirectorSettings } from '../../shared/settings';
+import { UNLOCK_DEMO_NAMES, chipDemoFromTotal } from '../../shared/unlockDemoChips';
 import { applyMarkupToMenu, tipMenuToItems, type DirectorMenuItem } from '../../shared/state';
 
 const ext = createExtHelper();
@@ -29,24 +30,23 @@ type FieldGroup = {
   preview?: 'cost' | 'protection';
 };
 
-/** Unlock goal + menu markup — one explainer, two fields. */
-const UNLOCK_FIELDS: FieldDef[] = [
-  {
-    key: 'preproductionGoal',
-    label: 'Tokens to unlock Director',
-    hint: 'Room total across menu tips; no maximum.',
-    min: 10,
-    unit: 'tk',
-  },
-  {
-    key: 'tipMenuMarkupPercent',
-    label: 'Markup on each menu item',
-    hint: 'e.g. 10% on 50 tk → 55 tk in Director.',
-    min: 0,
-    max: 200,
-    unit: '%',
-  },
-];
+const PREPRODUCTION_FIELD: FieldDef = {
+  key: 'preproductionGoal',
+  label: 'Tokens to unlock Director',
+  hint: 'Sum of tips on menu lines until unlock.',
+  min: 10,
+  unit: 'tk',
+};
+
+/** Only when `v1.tipMenu.get` returns enabled lines — models without a tip menu never see this. */
+const MARKUP_FIELD: FieldDef = {
+  key: 'tipMenuMarkupPercent',
+  label: 'Markup on each menu line',
+  hint: 'e.g. 10% on 50 tk → 55 tk in Director.',
+  min: 0,
+  max: 200,
+  unit: '%',
+};
 
 const GROUPS: FieldGroup[] = [
   {
@@ -105,7 +105,7 @@ const GROUPS: FieldGroup[] = [
   },
 ];
 
-const ALL_FIELDS: FieldDef[] = [...UNLOCK_FIELDS, ...GROUPS.flatMap((g) => g.fields)];
+const ALL_FIELDS: FieldDef[] = [PREPRODUCTION_FIELD, MARKUP_FIELD, ...GROUPS.flatMap((g) => g.fields)];
 
 const toForm = (settings: DirectorSettings): Record<FieldKey, string> => ({
   tipMenuMarkupPercent: String(settings.tipMenuMarkupPercent),
@@ -121,10 +121,15 @@ export const App = () => {
   const [form, setForm] = useState<Record<FieldKey, string>>(toForm(DEFAULT_SETTINGS));
   const [loaded, setLoaded] = useState(false);
   const [tipMenu, setTipMenu] = useState<DirectorMenuItem[]>([]);
+  const tipMenuRef = useRef(tipMenu);
+  tipMenuRef.current = tipMenu;
+
+  const hasTipMenu = tipMenu.length > 0;
 
   const errors = useMemo(() => {
     const out: Partial<Record<FieldKey, string>> = {};
-    ALL_FIELDS.forEach((field) => {
+    const fields = ALL_FIELDS.filter((field) => hasTipMenu || field.key !== 'tipMenuMarkupPercent');
+    fields.forEach((field) => {
       const raw = form[field.key];
       const num = Number(raw);
       if (!raw.trim()) {
@@ -138,7 +143,7 @@ export const App = () => {
       }
     });
     return out;
-  }, [form]);
+  }, [form, hasTipMenu]);
 
   const isError = Object.keys(errors).length > 0;
 
@@ -149,25 +154,30 @@ export const App = () => {
 
   useEffect(() => {
     let cancelled = false;
-    void ext
-      .makeRequest('v1.model.ext.settings.get', null)
-      .then((res) => {
-        if (cancelled) return;
-        setForm(toForm(normalizeSettings(res.settings)));
-        setLoaded(true);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setLoaded(true);
-      });
-
-    void ext
-      .makeRequest('v1.tipMenu.get', null)
-      .then((res) => {
-        if (cancelled) return;
-        setTipMenu(tipMenuToItems(res?.tipMenu ?? null));
-      })
-      .catch(() => undefined);
+    void Promise.all([
+      ext.makeRequest('v1.model.ext.settings.get', null).catch(() => ({ settings: undefined })),
+      ext.makeRequest('v1.tipMenu.get', null).catch(() => ({ tipMenu: null })),
+    ]).then(([settingsRes, tipRes]) => {
+      if (cancelled) return;
+      const items = tipMenuToItems(
+        tipRes && typeof tipRes === 'object' && 'tipMenu' in tipRes
+          ? (tipRes as { tipMenu?: TV1TipMenu | null }).tipMenu
+          : null,
+      );
+      setTipMenu(items);
+      const normalized = normalizeSettings(
+        settingsRes && typeof settingsRes === 'object' && 'settings' in settingsRes
+          ? (settingsRes as { settings?: unknown }).settings
+          : undefined,
+      );
+      setForm(
+        toForm({
+          ...normalized,
+          tipMenuMarkupPercent: items.length === 0 ? 0 : normalized.tipMenuMarkupPercent,
+        }),
+      );
+      setLoaded(true);
+    });
 
     return () => {
       cancelled = true;
@@ -178,8 +188,9 @@ export const App = () => {
     const onSaveRequested = async (_payload: TEvents['v1.model.ext.settings.set.requested']) => {
       const current = formRef.current;
       const currentIsError = isErrorRef.current;
+      const menuEmpty = tipMenuRef.current.length === 0;
       const settings: DirectorSettings = {
-        tipMenuMarkupPercent: Number(current.tipMenuMarkupPercent),
+        tipMenuMarkupPercent: menuEmpty ? 0 : Number(current.tipMenuMarkupPercent),
         preproductionGoal: Number(current.preproductionGoal),
         overtakeMargin: Number(current.overtakeMargin),
         minTenureSec: Number(current.minTenureSec),
@@ -224,6 +235,7 @@ export const App = () => {
 
       <HowItWorks
         tipMenu={tipMenu}
+        hasTipMenu={hasTipMenu}
         markupPercent={markupPercent}
         form={form}
         errors={errors}
@@ -281,113 +293,158 @@ export const App = () => {
 
 /* ---------------- "How it works" intro ---------------- */
 
-const HOWTO_FALLBACK: DirectorMenuItem[] = [
-  { id: 'ex1', title: 'Close-up', price: 25, basePrice: 25 },
-  { id: 'ex2', title: 'Dance', price: 50, basePrice: 50 },
-  { id: 'ex3', title: 'Look in eyes', price: 30, basePrice: 30 },
-];
-
-/** Sample viewer names — shows different people tipping part of the same goal. */
-const PARTIAL_DEMO_NAMES = ['Luna_Rose', 'M_K', 'Jaxxx17'] as const;
-
 const HowItWorks = ({
   tipMenu,
+  hasTipMenu,
   markupPercent,
   form,
   errors,
   onField,
 }: {
   tipMenu: DirectorMenuItem[];
+  hasTipMenu: boolean;
   markupPercent: number;
   form: Record<FieldKey, string>;
   errors: Partial<Record<FieldKey, string>>;
   onField: (key: FieldKey, value: string) => void;
 }) => {
-  const baseSlice = tipMenu.length > 0 ? tipMenu.slice(0, 1) : HOWTO_FALLBACK.slice(0, 1);
-  const withMarkup = applyMarkupToMenu(baseSlice, markupPercent);
-  const demo = withMarkup[0]!;
-  const p = demo.price;
-  const tipA = p < 3 ? p : Math.max(1, Math.floor(p / 3));
-  const tipB = p < 3 ? 0 : Math.max(1, Math.floor((p - tipA) / 2));
-  const tipC = p < 3 ? 0 : p - tipA - tipB;
-  const chipSteps = tipB > 0 ? (tipC > 0 ? 3 : 2) : 1;
+  const baseSlice = tipMenu.slice(0, 1);
+  const withMarkup = hasTipMenu ? applyMarkupToMenu(baseSlice, markupPercent) : [];
+  const demo = withMarkup[0];
+  const menuChips = demo ? chipDemoFromTotal(demo.price) : null;
+
+  const unlockGoalDemo = Math.max(
+    PREPRODUCTION_FIELD.min,
+    Math.floor(Number(form.preproductionGoal)) || PREPRODUCTION_FIELD.min,
+  );
+  const unlockChips = chipDemoFromTotal(unlockGoalDemo);
+
+  const preproductionHint = hasTipMenu
+    ? PREPRODUCTION_FIELD.hint
+    : 'Room total before unlock. Viewers match the bar in the slot.';
+
+  const renderChipBar = (tipA: number, tipB: number, tipC: number) => (
+    <div class="pa-bar-wrap">
+      <div class="pa-bar">
+        <div class="pa-bar-fill" />
+      </div>
+      <span class="pa-tip pa-tip-a">
+        <span class="pa-tip-nick">{UNLOCK_DEMO_NAMES[0]}</span>
+        <span class="pa-tip-amt">+{tipA}</span>
+      </span>
+      {tipB > 0 ? (
+        <span class="pa-tip pa-tip-b">
+          <span class="pa-tip-nick">{UNLOCK_DEMO_NAMES[1]}</span>
+          <span class="pa-tip-amt">+{tipB}</span>
+        </span>
+      ) : null}
+      {tipC > 0 ? (
+        <span class="pa-tip pa-tip-c">
+          <span class="pa-tip-nick">{UNLOCK_DEMO_NAMES[2]}</span>
+          <span class="pa-tip-amt">+{tipC}</span>
+        </span>
+      ) : null}
+    </div>
+  );
 
   return (
     <section class="settings-section">
       <header class="settings-section-head">
-        <h2>1 · Unlock and menu pricing</h2>
+        <h2>{hasTipMenu ? '1 · Unlock and menu pricing' : '1 · Unlock Director'}</h2>
       </header>
 
-      <p class="sr-only">
-        Different viewers can send partial tips toward the same menu line until the Director price
-        is met. Prices include a markup over your tip menu. When the room reaches your token goal,
-        the Director control unlocks.
-      </p>
+      {hasTipMenu ? (
+        <p class="sr-only">
+          Different viewers can send partial tips toward the same menu line until the Director price
+          is met. Markup adds to your menu prices; at 0% prices match your tip menu. When the room
+          reaches your token goal, the Director control unlocks.
+        </p>
+      ) : (
+        <p class="sr-only">
+          Illustration: several viewers send partial tips; each contribution stacks toward the same
+          unlock total until Director control unlocks.
+        </p>
+      )}
 
-      <div class="pricing-anim" data-pa-chips={String(chipSteps)} aria-hidden="true">
-        <div class="pricing-anim-top">
-          <span class="pa-item">{demo.title}</span>
-          <div class="pa-compare">
-            {demo.basePrice < demo.price ? (
-              <>
-                <span class="pa-base">{demo.basePrice} tk</span>
-                <span class="pa-arrow" aria-hidden="true">
-                  →
-                </span>
-                <span class="pa-director">{demo.price} tk</span>
-              </>
-            ) : (
-              <span class="pa-flat">{demo.price} tk</span>
-            )}
+      {hasTipMenu && demo && menuChips ? (
+        <div class="pricing-anim" data-pa-chips={String(menuChips.chipSteps)} aria-hidden="true">
+          <div class="pricing-anim-top">
+            <span class="pa-item">{demo.title}</span>
+            <div class="pa-compare">
+              {demo.basePrice < demo.price ? (
+                <>
+                  <span class="pa-base">{demo.basePrice} tk</span>
+                  <span class="pa-arrow" aria-hidden="true">
+                    →
+                  </span>
+                  <span class="pa-director">{demo.price} tk</span>
+                </>
+              ) : (
+                <span class="pa-flat">{demo.price} tk</span>
+              )}
+            </div>
           </div>
+          {renderChipBar(menuChips.tipA, menuChips.tipB, menuChips.tipC)}
         </div>
-
-        <div class="pa-bar-wrap">
-          <div class="pa-bar">
-            <div class="pa-bar-fill" />
+      ) : !hasTipMenu ? (
+        <div class="pricing-anim" data-pa-chips={String(unlockChips.chipSteps)} aria-hidden="true">
+          <div class="pricing-anim-top">
+            <span class="pa-item">Room unlock</span>
+            <div class="pa-compare">
+              <span class="pa-flat">{unlockGoalDemo} tk</span>
+            </div>
           </div>
-          <span class="pa-tip pa-tip-a">
-            <span class="pa-tip-nick">{PARTIAL_DEMO_NAMES[0]}</span>
-            <span class="pa-tip-amt">+{tipA}</span>
-          </span>
-          {tipB > 0 ? (
-            <span class="pa-tip pa-tip-b">
-              <span class="pa-tip-nick">{PARTIAL_DEMO_NAMES[1]}</span>
-              <span class="pa-tip-amt">+{tipB}</span>
-            </span>
-          ) : null}
-          {tipC > 0 ? (
-            <span class="pa-tip pa-tip-c">
-              <span class="pa-tip-nick">{PARTIAL_DEMO_NAMES[2]}</span>
-              <span class="pa-tip-amt">+{tipC}</span>
-            </span>
-          ) : null}
+          {renderChipBar(unlockChips.tipA, unlockChips.tipB, unlockChips.tipC)}
         </div>
-      </div>
+      ) : null}
 
       <div class="settings-fields settings-fields-unlock">
-        {UNLOCK_FIELDS.map((field) => (
-          <div class={`field${errors[field.key] ? ' is-invalid' : ''}`} key={field.key}>
-            <label for={`f_${field.key}`}>{field.label}</label>
+        <div class={`field${errors[PREPRODUCTION_FIELD.key] ? ' is-invalid' : ''}`}>
+          <label for={`f_${PREPRODUCTION_FIELD.key}`}>{PREPRODUCTION_FIELD.label}</label>
+          <div class="input-wrap">
+            <input
+              id={`f_${PREPRODUCTION_FIELD.key}`}
+              type="number"
+              min={PREPRODUCTION_FIELD.min}
+              step="1"
+              value={form[PREPRODUCTION_FIELD.key]}
+              onInput={(e) =>
+                onField(PREPRODUCTION_FIELD.key, (e.currentTarget as HTMLInputElement).value)
+              }
+            />
+            <span class="unit">{PREPRODUCTION_FIELD.unit}</span>
+          </div>
+          {errors[PREPRODUCTION_FIELD.key] ? (
+            <span class="err">{errors[PREPRODUCTION_FIELD.key]}</span>
+          ) : (
+            <span class="hint">{preproductionHint}</span>
+          )}
+        </div>
+
+        {hasTipMenu ? (
+          <div class={`field${errors[MARKUP_FIELD.key] ? ' is-invalid' : ''}`}>
+            <label for={`f_${MARKUP_FIELD.key}`}>{MARKUP_FIELD.label}</label>
             <div class="input-wrap">
               <input
-                id={`f_${field.key}`}
+                id={`f_${MARKUP_FIELD.key}`}
                 type="number"
-                min={field.min}
-                {...(field.max !== undefined ? { max: field.max } : {})}
+                min={MARKUP_FIELD.min}
+                max={MARKUP_FIELD.max}
                 step="1"
-                value={form[field.key]}
-                onInput={(e) => onField(field.key, (e.currentTarget as HTMLInputElement).value)}
+                value={form[MARKUP_FIELD.key]}
+                onInput={(e) =>
+                  onField(MARKUP_FIELD.key, (e.currentTarget as HTMLInputElement).value)
+                }
               />
-              <span class="unit">{field.unit}</span>
+              <span class="unit">{MARKUP_FIELD.unit}</span>
             </div>
-            {errors[field.key] ? (
-              <span class="err">{errors[field.key]}</span>
+            {errors[MARKUP_FIELD.key] ? (
+              <span class="err">{errors[MARKUP_FIELD.key]}</span>
             ) : (
-              <span class="hint">{field.hint}</span>
+              <span class="hint">{MARKUP_FIELD.hint}</span>
             )}
           </div>
-        ))}
+        ) : null}
       </div>
     </section>
   );

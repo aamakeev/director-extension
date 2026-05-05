@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
+import { chairCatchUpTokens } from '../../shared/chairBite';
 import { contributorColorAt } from '../../shared/contributorColors';
 import { formatRemaining } from '../../shared/format';
 import { userIdString, usernameString } from '../../shared/role';
 import { directorExt, useDirectorClient } from '../../shared/useDirectorState';
 import type { DirectorMenuGoal, DirectorPublicState } from '../../shared/state';
+import { UNLOCK_DEMO_NAMES, chipDemoFromTotal } from '../../shared/unlockDemoChips';
 
 const TIP_PRESETS = [10, 25, 50, 100];
 
@@ -30,6 +32,49 @@ type StageEntry = {
   countdown?: string;
 };
 
+/** Static preview: same pool, many small tips (matches settings mental model). */
+const UnlockContributorDemo = ({
+  goalTk,
+  fillPercent,
+}: {
+  goalTk: number;
+  fillPercent: number;
+}) => {
+  const G = Math.max(10, Math.floor(goalTk)) || 10;
+  const c = chipDemoFromTotal(G);
+  const pct = Math.min(100, Math.max(0, fillPercent));
+  return (
+    <div class="uc-demo" data-uc-chips={String(c.chipSteps)}>
+      <div class="uc-demo-row">
+        <span class="uc-demo-label">Room goal</span>
+        <span class="uc-demo-tk">{G} tk</span>
+      </div>
+      <div class="uc-demo-bar">
+        <span style={{ width: `${pct}%` }} />
+      </div>
+      <div class="uc-demo-chips">
+        <span class="uc-chip">
+          <span class="uc-chip-n">{UNLOCK_DEMO_NAMES[0]}</span>
+          <span class="uc-chip-a">+{c.tipA}</span>
+        </span>
+        {c.tipB > 0 ? (
+          <span class="uc-chip">
+            <span class="uc-chip-n">{UNLOCK_DEMO_NAMES[1]}</span>
+            <span class="uc-chip-a">+{c.tipB}</span>
+          </span>
+        ) : null}
+        {c.tipC > 0 ? (
+          <span class="uc-chip">
+            <span class="uc-chip-n">{UNLOCK_DEMO_NAMES[2]}</span>
+            <span class="uc-chip-a">+{c.tipC}</span>
+          </span>
+        ) : null}
+      </div>
+      <p class="uc-demo-presets muted small">10 · 25 · 50 · 100+ tk</p>
+    </div>
+  );
+};
+
 export const App = () => {
   const client = useDirectorClient();
   const { context, role, state, selfAllocations, toasts, dismissToast, pushToast, activityInbox } =
@@ -40,6 +85,7 @@ export const App = () => {
   const [moveTo, setMoveTo] = useState<string>('');
   const [moveAmount, setMoveAmount] = useState<string>('5');
   const [resetBusy, setResetBusy] = useState<boolean>(false);
+  const [biteBusy, setBiteBusy] = useState(false);
   const [actFlash, setActFlash] = useState(false);
   const lastActId = useRef('');
 
@@ -57,8 +103,14 @@ export const App = () => {
   const meName = usernameString(context.user);
   const isModel = role === 'model';
   const isGuest = role === 'guest';
-  const isDirector = Boolean(state?.director?.id && state.director.id === meId);
+  const isDirector = Boolean(state?.isLive && state?.director?.id && state.director.id === meId);
   const goals = state?.menuGoals ?? [];
+  /** Pre-show: no SDK menu lines, or no rows yet — explain the single unlock bar + concrete tip sizes. */
+  const showUnlockGuide = Boolean(
+    state &&
+      !state.isLive &&
+      (state.menuSource !== 'sdk' || goals.length === 0),
+  );
 
   const allocatedSummary = useMemo<AllocSummary[]>(
     () =>
@@ -143,6 +195,31 @@ export const App = () => {
     void directorExt.makeRequest('v1.ext.signup.open', { type: 'user' }).catch(() => undefined);
   };
 
+  const sendChairBite = async () => {
+    if (!state || !meId || isModel || isGuest || isDirector || biteBusy) return;
+    const n = chairCatchUpTokens(
+      state.director.total,
+      state.overtakeMargin,
+      selfAllocations.total,
+    );
+    if (n <= 0) return;
+    setBiteBusy(true);
+    try {
+      await directorExt.makeRequest('v1.payment.tokens.spend', {
+        tokensAmount: n,
+        tokensSpendData: {
+          kind: 'director.chair.chase',
+          userId: meId,
+          username: meName,
+        },
+      });
+    } catch (_err) {
+      pushToast({ tone: 'warn', message: 'Payment cancelled' });
+    } finally {
+      setBiteBusy(false);
+    }
+  };
+
   const resetShow = async () => {
     if (!isModel || resetBusy) return;
     const modelId = String(context.model?.id ?? meId ?? '');
@@ -177,6 +254,32 @@ export const App = () => {
     100,
     (state.totalSessionTips / Math.max(1, state.preproductionGoal)) * 100,
   );
+
+  const tenureActive =
+    state.isLive && Boolean(state.director.id) && state.directorTenureLeftMs > 0;
+  const openChairRace =
+    state.isLive && Boolean(state.director.id) && !state.directorTenureLeftMs;
+  const biteNeed =
+    openChairRace && !isModel && !isGuest && !isDirector
+      ? chairCatchUpTokens(
+          state.director.total,
+          state.overtakeMargin,
+          selfAllocations.total,
+        )
+      : 0;
+  const chairGuestHint =
+    openChairRace && !isModel && isGuest
+      ? chairCatchUpTokens(state.director.total, state.overtakeMargin, 0)
+      : 0;
+  const shieldPct = state.directorTenureLeftMs
+    ? Math.max(
+        2,
+        Math.min(
+          100,
+          (state.directorTenureLeftMs / Math.max(1, state.minTenureSec * 1000)) * 100,
+        ),
+      )
+    : 0;
 
   return (
     <div class={`menu-shell${actFlash ? ' menu-shell--act-pulse' : ''}`}>
@@ -220,6 +323,29 @@ export const App = () => {
             </div>
           </div>
         ) : null}
+
+        {tenureActive && (
+          <div class="status-shield">
+            <span class="muted small">Lead safe</span>
+            <span class="muted small">{formatRemaining(state.directorTenureLeftMs)}</span>
+            <div class="bar bar--shield">
+              <span style={{ width: `${shieldPct}%` }} />
+            </div>
+          </div>
+        )}
+
+        {openChairRace && !isModel && !isGuest && !isDirector && biteNeed > 0 ? (
+          <div class="chair-bite-row">
+            <button
+              type="button"
+              class="primary-btn chair-bite-btn"
+              disabled={biteBusy}
+              onClick={() => void sendChairBite()}
+            >
+              {biteBusy ? '…' : `Take chair · ${biteNeed} tk`}
+            </button>
+          </div>
+        ) : null}
       </section>
 
       {/* ---------- Guest sign-up CTA ---------- */}
@@ -227,8 +353,20 @@ export const App = () => {
         <section class="menu-card cta-card">
           <div class="cta-title">Sign in to play</div>
           <div class="cta-text">
-            Tip any goal below to back the show. The top tipper becomes Director and runs the
-            controls.
+            {state.isLive && chairGuestHint > 0 ? (
+              <p class="cta-banana">
+                LIVE: <strong>{chairGuestHint} tk</strong> from your first tips to take Director.
+              </p>
+            ) : null}
+            {goals.length === 0 ? (
+              <>Sign in, then tip <strong>10–100+ tk</strong> on the stream toward the bar above.</>
+            ) : showUnlockGuide ? (
+              <>
+                Sign in, then use <strong>+10 … +100</strong> on a line below—they stack on the bar.
+              </>
+            ) : (
+              <>Tip a goal below. Top tipper becomes Director.</>
+            )}
           </div>
           <button class="primary-btn cta-btn" type="button" onClick={openSignUp}>
             Sign up
@@ -260,13 +398,23 @@ export const App = () => {
       {/* ---------- Tip menu (or empty state) ---------- */}
       <section class="menu-card">
         <div class="section-title">
-          <span>Tip menu</span>
+          <span>
+            {goals.length === 0 && showUnlockGuide
+              ? 'Room goal'
+              : goals.length === 0
+                ? 'Tip menu'
+                : showUnlockGuide
+                  ? 'Tip toward unlock'
+                  : 'Tip menu'}
+          </span>
         </div>
 
         {goals.length === 0 ? (
-          <div class="empty">
-            Tip menu is empty. Once the model sets a tip menu, items appear here.
-          </div>
+          showUnlockGuide ? (
+            <UnlockContributorDemo goalTk={state.preproductionGoal} fillPercent={sessionPercent} />
+          ) : (
+            <div class="empty">Tip menu is empty. Once the model sets a tip menu, items appear here.</div>
+          )
         ) : (
           <div class="goals-list">
             {goals.map((goal) => (
@@ -296,13 +444,13 @@ export const App = () => {
 
         {selfAllocations.total > 0 && (
           <div class="self-summary">
-            You backed {selfAllocations.total} tk this session
+            You've put {selfAllocations.total} tk on the table this round.
           </div>
         )}
       </section>
 
       {/* ---------- Stage (current + queue + history + activity merged) ---------- */}
-      <StageSection state={state} isDirector={isDirector} />
+      <StageSection state={state} isDirector={isDirector} showUnlockVisual={showUnlockGuide} />
 
       {/* ---------- Toasts ---------- */}
       {toasts.length > 0 && (
@@ -541,9 +689,11 @@ const GoalRow = ({
 const StageSection = ({
   state,
   isDirector,
+  showUnlockVisual,
 }: {
   state: DirectorPublicState;
   isDirector: boolean;
+  showUnlockVisual: boolean;
 }) => {
   const current = state.currentPerformance;
   const entries: StageEntry[] = [];
@@ -586,6 +736,12 @@ const StageSection = ({
     return b.at - a.at;
   });
 
+  const stageUnlockVisual =
+    sorted.length === 0 &&
+    showUnlockVisual &&
+    !state.isLive &&
+    (state.menuSource !== 'sdk' || state.menuGoals.length === 0);
+
   return (
     <section class="menu-card">
       <div class="section-title">
@@ -594,7 +750,11 @@ const StageSection = ({
           <span class="muted small section-aside">Use the remote on the stream to call shots</span>
         )}
       </div>
-      {sorted.length === 0 ? (
+      {stageUnlockVisual ? (
+        <p class="stage-idle-hint muted small">
+          Director calls and tips show here after the room goes LIVE.
+        </p>
+      ) : sorted.length === 0 ? (
         <div class="empty">
           {state.isLive
             ? 'Stage clear · waiting for the Director to call a shot.'

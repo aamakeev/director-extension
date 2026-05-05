@@ -103,6 +103,16 @@ html[data-theme='light'] {
   color: #fff;
 }
 
+.pg-pill:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pg-pill:disabled:hover {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+}
+
 .pg-row-btn {
   display: flex;
   flex-direction: column;

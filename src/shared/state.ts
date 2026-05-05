@@ -140,6 +140,13 @@ export type WhisperEnvelope =
       username: string;
     }
   | {
+      type: 'director.chair.chase';
+      paymentData: TV1PaymentData;
+      amount: number;
+      userId: string;
+      username: string;
+    }
+  | {
       type: 'director.toast';
       targetUserId: string;
       tone: 'success' | 'warn' | 'info';

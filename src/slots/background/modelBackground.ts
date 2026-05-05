@@ -6,6 +6,7 @@ import type {
 } from '@stripchatdev/ext-helper';
 import { createExtHelper } from '@stripchatdev/ext-helper';
 
+import { chairCatchUpTokens } from '../../shared/chairBite';
 import { COMMAND_BY_ID, type DirectorCommand } from '../../shared/commands';
 import { clampInt, isObject } from '../../shared/format';
 import {
@@ -513,6 +514,69 @@ export const startModelBackground = (): (() => void) => {
     broadcastState();
   };
 
+  const handleChairChase = (envelope: Extract<WhisperEnvelope, { type: 'director.chair.chase' }>) => {
+    const payment = validatePayment(envelope.paymentData, envelope.amount, envelope.userId);
+    if (!payment) return;
+
+    if (!state.isLive || !state.director.id) {
+      sendToast(envelope.userId, 'warn', 'Chair race is only LIVE');
+      return;
+    }
+
+    const tenureLeft = state.director.startedAt
+      ? Math.max(0, state.director.startedAt + settings.minTenureSec * 1000 - Date.now())
+      : 0;
+    if (tenureLeft > 0) {
+      sendToast(envelope.userId, 'warn', 'Wait until the lead safe window ends');
+      return;
+    }
+
+    if (state.director.id === envelope.userId) {
+      sendToast(envelope.userId, 'warn', 'You already hold the chair');
+      return;
+    }
+
+    const user = ensureUser(envelope.userId, envelope.username);
+    if (!user) return;
+
+    const need = chairCatchUpTokens(
+      state.director.total,
+      settings.overtakeMargin,
+      user.total,
+    );
+    if (need <= 0) {
+      sendToast(envelope.userId, 'info', 'You already qualify—syncing…');
+      syncLeadership(user.id);
+      broadcastState();
+      return;
+    }
+
+    const amount = Math.max(0, Math.floor(envelope.amount));
+    if (amount !== need) {
+      sendToast(envelope.userId, 'warn', `Tip exactly ${need} tk to take the chair`);
+      return;
+    }
+
+    const item = state.menu[0];
+    if (!item) {
+      sendToast(user.id, 'warn', 'No menu lines to attach this tip to');
+      return;
+    }
+
+    markTransaction(payment.transactionId);
+
+    user.total += amount;
+    user.allocations[item.id] = (user.allocations[item.id] ?? 0) + amount;
+    state.totalSessionTips += amount;
+
+    syncLeadership(user.id);
+    appendActivity(`${user.name} +${amount}tk → chair race`, 'success');
+    sendToast(user.id, 'success', `${amount}tk toward the chair`);
+    checkMenuGoalCompletions();
+    sendSelfAllocations(user.id);
+    broadcastState();
+  };
+
   const handleReallocate = (
     envelope: Extract<WhisperEnvelope, { type: 'director.menu.reallocate' }>,
   ) => {
@@ -662,6 +726,10 @@ export const startModelBackground = (): (() => void) => {
     }
     if (data.type === 'director.menu.reallocate') {
       handleReallocate(data);
+      return;
+    }
+    if (data.type === 'director.chair.chase') {
+      handleChairChase(data);
       return;
     }
     if (data.type === 'director.command.issue') {

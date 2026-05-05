@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { COMMAND_GROUPS } from '../../shared/commands';
+import { chairCatchUpTokens } from '../../shared/chairBite';
 import { formatRemaining } from '../../shared/format';
 import { resolveRole, userIdString, usernameString } from '../../shared/role';
 import { directorExt, useDirectorClient } from '../../shared/useDirectorState';
 import type { DirectorPublicState } from '../../shared/state';
 
 export const App = () => {
-  const { context, state, pushToast, activityInbox } = useDirectorClient();
+  const { context, state, selfAllocations, pushToast, activityInbox } = useDirectorClient();
   const [, setTick] = useState(0);
   const [cmdBusy, setCmdBusy] = useState<string>('');
+  const [biteBusy, setBiteBusy] = useState(false);
   const [actFlash, setActFlash] = useState(false);
   const lastActId = useRef<string>('');
 
@@ -52,7 +54,7 @@ export const App = () => {
   const role = resolveRole(context);
   const isModel = role === 'model';
   const isGuest = role === 'guest';
-  const isDirector = Boolean(state.director?.id && state.director.id === meId);
+  const isDirector = Boolean(state.isLive && state.director?.id && state.director.id === meId);
   const canControl = isDirector && state.isLive && !isModel && !isGuest;
 
   const sessionPercent = Math.min(
@@ -62,6 +64,32 @@ export const App = () => {
   const pressurePercent = Math.max(2, state.pressure.percent);
   const current = state.currentPerformance;
   const remaining = current ? Math.max(0, current.endsAt - Date.now()) : 0;
+
+  const tenureActive =
+    state.isLive && Boolean(state.director.id) && state.directorTenureLeftMs > 0;
+  const openChairRace =
+    state.isLive && Boolean(state.director.id) && !state.directorTenureLeftMs;
+  const biteNeed =
+    openChairRace && !isModel && !isGuest && !isDirector
+      ? chairCatchUpTokens(
+          state.director.total,
+          state.overtakeMargin,
+          selfAllocations.total,
+        )
+      : 0;
+  const chairFromZero =
+    openChairRace && !isModel
+      ? chairCatchUpTokens(state.director.total, state.overtakeMargin, 0)
+      : 0;
+  const shieldPct = state.directorTenureLeftMs
+    ? Math.max(
+        2,
+        Math.min(
+          100,
+          (state.directorTenureLeftMs / Math.max(1, state.minTenureSec * 1000)) * 100,
+        ),
+      )
+    : 0;
 
   const sendCommand = async (commandId: string) => {
     if (!canControl || cmdBusy || !meId) return;
@@ -80,6 +108,35 @@ export const App = () => {
       pushToast({ tone: 'warn', message: 'Payment cancelled' });
     } finally {
       setCmdBusy('');
+    }
+  };
+
+  const openSignUp = () => {
+    void directorExt.makeRequest('v1.ext.signup.open', { type: 'user' }).catch(() => undefined);
+  };
+
+  const sendChairBite = async () => {
+    if (!state || !meId || isModel || isGuest || isDirector || biteBusy) return;
+    const n = chairCatchUpTokens(
+      state.director.total,
+      state.overtakeMargin,
+      selfAllocations.total,
+    );
+    if (n <= 0) return;
+    setBiteBusy(true);
+    try {
+      await directorExt.makeRequest('v1.payment.tokens.spend', {
+        tokensAmount: n,
+        tokensSpendData: {
+          kind: 'director.chair.chase',
+          userId: meId,
+          username: meName,
+        },
+      });
+    } catch (_err) {
+      pushToast({ tone: 'warn', message: 'Payment cancelled' });
+    } finally {
+      setBiteBusy(false);
     }
   };
 
@@ -136,7 +193,7 @@ export const App = () => {
           </div>
         )}
 
-        {state.isLive && (
+        {state.isLive && state.director.id && (
           <div class="remote-chair">
             <span class="chair-tag">Lead</span>
             <span class="chair-name">{state.director.name}</span>
@@ -144,23 +201,53 @@ export const App = () => {
           </div>
         )}
 
-        {isModel && state.isLive && (
-          <div class="remote-meter">
+        {tenureActive && (
+          <div class="remote-meter remote-meter--shield">
             <div class="meter-label">
-              <span>Lead protection</span>
-              <span>
-                {state.directorTenureLeftMs
-                  ? formatRemaining(state.directorTenureLeftMs)
-                  : 'open challenge'}
-              </span>
+              <span>Lead safe</span>
+              <span>{formatRemaining(state.directorTenureLeftMs)}</span>
             </div>
-            <div class="meter-bar">
-              <span
-                style={{
-                  width: `${Math.max(2, state.directorTenureLeftMs ? Math.min(100, (state.directorTenureLeftMs / Math.max(1, state.minTenureSec * 1000)) * 100) : 0)}%`,
-                }}
-              />
+            <div class="meter-bar meter-bar--shield">
+              <span style={{ width: `${shieldPct}%` }} />
             </div>
+          </div>
+        )}
+
+        {openChairRace && (
+          <div class="remote-open-seat">
+            <div class="open-seat-title">Open challenge</div>
+            <p class="open-seat-copy">
+              Lead immunity is off. Overtake <strong>{state.director.name}</strong> by{' '}
+              <strong>{state.overtakeMargin} tk</strong> in session tips to take Director.
+            </p>
+            {!isModel && isGuest && chairFromZero > 0 ? (
+              <div class="open-seat-actions">
+                <p class="guest-banana">
+                  From zero: <strong>{chairFromZero} tk</strong> to lead — sign in to tip.
+                </p>
+                <button type="button" class="bite-btn" onClick={openSignUp}>
+                  Sign in
+                </button>
+              </div>
+            ) : !isModel && !isGuest && !isDirector && biteNeed > 0 ? (
+              <div class="open-seat-actions">
+                <p class="open-seat-you">
+                  You need <strong>{biteNeed} tk</strong> more on your session total.
+                </p>
+                <button
+                  type="button"
+                  class="bite-btn"
+                  disabled={biteBusy}
+                  onClick={() => void sendChairBite()}
+                >
+                  {biteBusy ? '…' : `Take chair · ${biteNeed} tk`}
+                </button>
+              </div>
+            ) : !isModel && isDirector && openChairRace ? (
+              <p class="open-seat-foot">You hold the chair — defend your lead.</p>
+            ) : isModel && openChairRace ? (
+              <p class="open-seat-foot">Immunity off · viewers can flip the lead.</p>
+            ) : null}
           </div>
         )}
 

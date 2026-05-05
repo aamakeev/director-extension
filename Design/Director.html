@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Director · UI redesign</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet" />
+
+<link rel="stylesheet" href="tokens.css" />
+<link rel="stylesheet" href="remote.css" />
+<link rel="stylesheet" href="main-game.css" />
+<link rel="stylesheet" href="settings.css" />
+
+<style>
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: #0a0a0c;
+    color: #f4f1ea;
+    font-family: "Inter", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* —— design-canvas wrap —— */
+  #app { width: 100vw; height: 100vh; }
+
+  /* —— артборды получают чёрный фон для контекста —— */
+  .ab-stage {
+    width: 100%;
+    height: 100%;
+    background:
+      radial-gradient(ellipse 60% 40% at 70% 30%, rgba(255, 184, 107, 0.08), transparent 70%),
+      radial-gradient(ellipse 60% 50% at 30% 80%, rgba(106, 155, 216, 0.06), transparent 70%),
+      linear-gradient(180deg, #0a0a0c 0%, #14110d 100%);
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* фейковый фон стрима для overlay-арта — модель + студийный свет, плейсхолдер */
+  .ab-stream-bg {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 50% at 35% 45%, rgba(255, 184, 107, 0.18), transparent 65%),
+      radial-gradient(ellipse 50% 60% at 60% 70%, rgba(232, 96, 47, 0.1), transparent 70%),
+      linear-gradient(150deg, #2a1f12 0%, #14100a 60%, #0a0805 100%);
+  }
+  .ab-stream-bg::before {
+    /* силуэт "модели" — placeholder */
+    content: "";
+    position: absolute;
+    left: 30%;
+    top: 35%;
+    width: 30%;
+    height: 60%;
+    background: radial-gradient(ellipse at 50% 30%, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.2) 60%, transparent 70%);
+    border-radius: 50% 50% 30% 30% / 60% 60% 30% 30%;
+  }
+  .ab-stream-bg::after {
+    /* tag "STREAM placeholder" */
+    content: "STREAM · placeholder";
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(244, 241, 234, 0.4);
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(244, 241, 234, 0.15);
+  }
+
+  /* размещение пульта поверх псевдо-стрима */
+  .ab-overlay-frame {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-end;
+  }
+  .ab-overlay-frame .ro-shell {
+    background: transparent;
+  }
+  .ab-overlay-frame .ro-shell::before,
+  .ab-overlay-frame .ro-shell::after {
+    display: none;
+  }
+
+  /* для вариант-просмотров на разных размерах */
+  .ab-rorow {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    gap: 0;
+    padding: 24px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* taba mainGame в "контексте сайта" — слева псевдо-чат, справа панель */
+  .ab-mg-frame {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: stretch;
+  }
+  .ab-mg-frame .ab-stream-bg {
+    flex: 1;
+    position: relative;
+    inset: auto;
+  }
+  .ab-mg-frame .mgf-shell {
+    flex-shrink: 0;
+    width: 320px;
+    border-left: 1px solid rgba(212, 165, 89, 0.16);
+    box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
+    overflow-y: auto;
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* settings —- весь артборд */
+  .ab-settings-frame {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+  }
+
+  /* ── annotation ribbons ── */
+  .annot {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(212, 165, 89, 0.25);
+    backdrop-filter: blur(6px);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(244, 241, 234, 0.7);
+    z-index: 10;
+  }
+  .annot b { color: #ffb86b; font-weight: 800; }
+  .annot::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ffb86b;
+    box-shadow: 0 0 6px rgba(255, 184, 107, 0.6);
+  }
+
+  /* viewport sub-arts: разные размеры right overlay */
+  .vp-card {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse 70% 50% at 35% 45%, rgba(255, 184, 107, 0.18), transparent 65%),
+      linear-gradient(150deg, #2a1f12 0%, #14100a 60%, #0a0805 100%);
+    border: 1px solid rgba(255, 220, 170, 0.12);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  }
+  .vp-card-tag {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #ffb86b;
+    z-index: 5;
+    border: 1px solid rgba(255, 184, 107, 0.3);
+  }
+  .vp-card .ro-shell {
+    background: transparent;
+  }
+  .vp-card .ro-shell::before { display: none; }
+
+</style>
+</head>
+<body data-icon-style="line">
+<div id="app"></div>
+
+<!-- Tweak defaults block -->
+<script>
+  window.TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "palette": "amber",
+    "iconStyle": "line"
+  }/*EDITMODE-END*/;
+</script>
+
+<!-- Libs -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- Components -->
+<script type="text/babel" src="icons.jsx"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="remote.jsx"></script>
+<script type="text/babel" src="main-game.jsx"></script>
+<script type="text/babel" src="settings.jsx"></script>
+
+<!-- App -->
+<script type="text/babel">
+
+const {
+  DesignCanvas,
+  DCSection,
+  DCArtboard,
+  RightOverlay,
+  MainGameFun,
+  Settings,
+  TweaksPanel,
+  TweakSection,
+  TweakRadio,
+  useTweaks,
+} = window;
+
+const PALETTES = {
+  amber:   { hot: "#ffb86b", deep: "#c97a3a", brass: "#d4a559", cream: "#f4f1ea" },
+  ruby:    { hot: "#ff6b8a", deep: "#c93a5a", brass: "#d45980", cream: "#f4eef0" },
+  emerald: { hot: "#6bd4a0", deep: "#3a8a5e", brass: "#7eb88a", cream: "#eef4f1" },
+  cyan:    { hot: "#6bd4ff", deep: "#3a7ec9", brass: "#5996c4", cream: "#eef1f4" },
+  violet:  { hot: "#c08aff", deep: "#7c3aed", brass: "#9d6dd3", cream: "#efeef4" },
+};
+
+function applyPalette(name) {
+  const p = PALETTES[name] || PALETTES.amber;
+  const r = document.documentElement.style;
+  r.setProperty("--d-amber-hot", p.hot);
+  r.setProperty("--d-amber-deep", p.deep);
+  r.setProperty("--d-brass", p.brass);
+  r.setProperty("--d-cream", p.cream);
+}
+
+function applyIconStyle(s) {
+  document.body.setAttribute("data-icon-style", s);
+}
+
+const App = () => {
+  const [tweaks, setTweak] = useTweaks(window.TWEAK_DEFAULTS);
+
+  React.useEffect(() => { applyPalette(tweaks.palette); }, [tweaks.palette]);
+  React.useEffect(() => { applyIconStyle(tweaks.iconStyle); }, [tweaks.iconStyle]);
+
+  return (
+    <>
+      <DesignCanvas minScale={0.08} maxScale={6}>
+        <DCSection id="overlay" title="Right Overlay · Director's Console">
+          <DCArtboard id="ro-macbook" label="MacBook Pro 16″ — 360 × 620" width={360} height={620}>
+            <div className="ab-stage">
+              <div className="ab-stream-bg"></div>
+              <div className="annot">overlay · <b>360w</b> · max console</div>
+              <div className="ab-overlay-frame">
+                <RightOverlay />
+              </div>
+            </div>
+          </DCArtboard>
+
+          <DCArtboard id="ro-asus" label="Asus Zenbook Fold — 360 × 420" width={360} height={420}>
+            <div className="ab-stage">
+              <div className="ab-stream-bg"></div>
+              <div className="annot">overlay · <b>short</b> · 420h</div>
+              <div className="ab-overlay-frame">
+                <RightOverlay />
+              </div>
+            </div>
+          </DCArtboard>
+
+          <DCArtboard id="ro-1600" label="1600w viewport — 270 × 480" width={270} height={480}>
+            <div className="ab-stage">
+              <div className="ab-stream-bg"></div>
+              <div className="annot">overlay · <b>compact</b> · 270w</div>
+              <div className="ab-overlay-frame">
+                <RightOverlay />
+              </div>
+            </div>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="main" title="Main Game Fun · Tab Beside the Stream">
+          <DCArtboard id="mg-stream" label="In context — 1100 × 720" width={1100} height={720}>
+            <div className="ab-stage">
+              <div className="ab-mg-frame">
+                <div className="ab-stream-bg">
+                  <div className="annot">stream area · placeholder</div>
+                </div>
+                <MainGameFun />
+              </div>
+            </div>
+          </DCArtboard>
+
+          <DCArtboard id="mg-solo" label="Tab solo — 320 × 980" width={320} height={980}>
+            <div className="ab-stage" style={{ overflowY: "auto" }}>
+              <MainGameFun />
+            </div>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="settings" title="Settings · Model Wizard">
+          <DCArtboard id="set-1" label="Step 1 — Tonight's Goal — 760 × 900" width={760} height={900}>
+            <div className="ab-stage ab-settings-frame">
+              <Settings />
+            </div>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <TweaksPanel title="Tweaks · Director">
+        <TweakSection label="Palette">
+          <TweakRadio
+            label="Accent"
+            value={tweaks.palette}
+            options={[
+              { value: "amber", label: "Amber" },
+              { value: "ruby", label: "Ruby" },
+              { value: "emerald", label: "Emerald" },
+              { value: "cyan", label: "Cyan" },
+              { value: "violet", label: "Violet" },
+            ]}
+            onChange={(v) => setTweak("palette", v)}
+          />
+        </TweakSection>
+        <TweakSection label="Icons">
+          <TweakRadio
+            label="Style"
+            value={tweaks.iconStyle}
+            options={[
+              { value: "line", label: "Line" },
+              { value: "filled", label: "Filled" },
+              { value: "mono", label: "Mono" },
+            ]}
+            onChange={(v) => setTweak("iconStyle", v)}
+          />
+        </TweakSection>
+      </TweaksPanel>
+    </>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById("app")).render(<App />);
+</script>
+</body>
+</html>

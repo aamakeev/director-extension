@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import type { TV1ExtUser } from '@stripchatdev/ext-helper';
 
 import { App as MainApp } from '../slots/mainGameFun/app';
 import { App as OverlayApp } from '../slots/rightOverlay/app';
 import { App as SettingsApp } from '../slots/settings/app';
 
+import { whisperSelfId } from '../shared/role';
+
 import { mockBus } from './extHelperMock';
-import { SCENARIOS, type Scenario } from './scenarios';
+import { getSdkTipMenuForScenario, SCENARIOS, type Scenario } from './scenarios';
 
 import '../slots/mainGameFun/main.css';
 import '../slots/rightOverlay/main.css';
@@ -15,19 +18,44 @@ import './playground.css';
 type Role = 'guest' | 'viewer' | 'director' | 'model';
 type Theme = 'dark' | 'light';
 type Slot = 'tab' | 'overlay' | 'settings';
+type RoleAvailability = Record<Role, { enabled: boolean; reason?: string }>;
 
 const SELF_USER = {
-  guest: { id: 0, isGuest: true, isModel: false, username: 'Guest' },
+  guest: { isGuest: true, guestHash: 'mock_guest' },
   viewer: { id: 'u-self', isGuest: false, isModel: false, username: 'me_viewer' },
   director: { id: 'u1', isGuest: false, isModel: false, username: 'rose_taker' },
   model: { id: 'm1', isGuest: false, isModel: true, username: 'the_model' },
-};
+} as unknown as Record<Role, TV1ExtUser>;
+
+const selfWhisperTarget = (role: Role) => whisperSelfId(SELF_USER[role]);
 
 const buildContext = (role: Role) => ({
   user: SELF_USER[role],
   model: { id: 'm1', username: 'the_model' },
   room: { id: 'r1' },
 });
+
+const getRoleAvailability = (scenario: Scenario): RoleAvailability => {
+  const hasDirector = Boolean(scenario.state.isLive && scenario.state.director.id);
+  return {
+    guest: { enabled: true },
+    viewer: { enabled: true },
+    model: { enabled: true },
+    director: hasDirector
+      ? { enabled: true }
+      : {
+          enabled: false,
+          reason: scenario.state.isLive
+            ? 'No director in this snapshot'
+            : 'Director does not exist before LIVE',
+        },
+  };
+};
+
+const pickFallbackRole = (availability: RoleAvailability): Role => {
+  const order: Role[] = ['viewer', 'guest', 'model', 'director'];
+  return order.find((r) => availability[r].enabled) ?? 'viewer';
+};
 
 let toastSeq = 1;
 
@@ -42,24 +70,50 @@ export const Playground = () => {
     () => SCENARIOS.find((s) => s.id === scenarioId) ?? SCENARIOS[0]!,
     [scenarioId],
   );
+  const roleAvailability = useMemo(() => getRoleAvailability(scenario), [scenario]);
+
+  useEffect(() => {
+    if (roleAvailability[role].enabled) return;
+    setRole(pickFallbackRole(roleAvailability));
+  }, [role, roleAvailability]);
 
   // Apply theme to <html>.
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
-  // Wire mock request handlers once.
+  const broadcastActive = useCallback(() => {
+    mockBus.emit('v1.ext.context.updated', { context: buildContext(role) });
+    mockBus.emit('v1.ext.whispered', { ...scenario.state, updatedAt: Date.now() });
+
+    if (role === 'viewer' || role === 'director') {
+      const goals = scenario.state.menuGoals;
+      const allocs: Array<{ itemId: string; title: string; allocated: number }> = [];
+      let total = 0;
+      if (goals[0]) {
+        const a = Math.min(25, goals[0].progress || 25);
+        allocs.push({ itemId: goals[0].id, title: goals[0].title, allocated: a });
+        total += a;
+      }
+      if (goals[1]) {
+        const a = Math.min(15, goals[1].progress || 15);
+        allocs.push({ itemId: goals[1].id, title: goals[1].title, allocated: a });
+        total += a;
+      }
+      mockBus.emit('v1.ext.whispered', {
+        type: 'director.self.allocations',
+        targetUserId: selfWhisperTarget(role),
+        total,
+        allocations: allocs,
+      });
+    }
+  }, [scenario, role]);
+
+  // Wire mock handlers (re-run when scenario or role changes so closures never go stale).
   useEffect(() => {
     mockBus.setRequest('v1.ext.context.get', () => buildContext(role));
     mockBus.setRequest('v1.tipMenu.get', () => ({
-      tipMenu: {
-        isEnabled: true,
-        items: [
-          { activity: 'Close-up', price: 25 },
-          { activity: 'Dance', price: 40 },
-          { activity: 'Look in eyes', price: 30 },
-        ],
-      },
+      tipMenu: getSdkTipMenuForScenario(scenario),
     }));
     mockBus.setRequest('v1.monitoring.report.error', () => undefined);
     mockBus.setRequest('v1.monitoring.report.log', () => undefined);
@@ -67,7 +121,7 @@ export const Playground = () => {
     mockBus.setRequest('v1.ext.signup.open', () => {
       mockBus.emit('v1.ext.whispered', {
         type: 'director.toast',
-        targetUserId: String(SELF_USER[role].id),
+        targetUserId: selfWhisperTarget(role),
         tone: 'info',
         message: '[mock] sign-up modal would open',
       });
@@ -84,12 +138,13 @@ export const Playground = () => {
       commandCostTokens: scenario.state.commandCostTokens,
     };
     mockBus.setRequest('v1.model.ext.settings.get', () => ({ settings: savedSettings }));
+    mockBus.setRequest('v1.ext.settings.get', () => ({ settings: savedSettings }));
     mockBus.setRequest('v1.model.ext.settings.set', (payload) => {
       const p = payload as { settings: typeof savedSettings; isError?: boolean };
       if (!p.isError) savedSettings = p.settings;
       mockBus.emit('v1.ext.whispered', {
         type: 'director.toast',
-        targetUserId: String(SELF_USER[role].id),
+        targetUserId: selfWhisperTarget(role),
         tone: p.isError ? 'warn' : 'success',
         message: p.isError ? '[mock] save blocked: invalid' : '[mock] settings saved',
       });
@@ -99,15 +154,17 @@ export const Playground = () => {
     mockBus.setRequest('v1.ext.whisper', (payload) => {
       const p = payload as { data?: { type?: string } };
       if (!p?.data) return undefined;
-      // The viewer mock asks for state — re-broadcast the active scenario.
       if (p.data.type === 'director.state.request') {
         broadcastActive();
       }
-      // Surface as a toast so it is visible we received it.
-      if (p.data.type === 'director.menu.tip' || p.data.type === 'director.command.issue') {
+      if (
+        p.data.type === 'director.menu.tip' ||
+        p.data.type === 'director.command.issue' ||
+        p.data.type === 'director.chair.chase'
+      ) {
         mockBus.emit('v1.ext.whispered', {
           type: 'director.toast',
-          targetUserId: String(SELF_USER[role].id),
+          targetUserId: selfWhisperTarget(role),
           tone: 'info',
           message: `[mock] sent ${p.data.type}`,
         });
@@ -128,80 +185,62 @@ export const Playground = () => {
         amount: String(p.tokensAmount),
         paymentToken: 'mock_token',
         transactionId: txId,
-        userId: String(SELF_USER[role].id),
+        userId: selfWhisperTarget(role),
       };
-      // Notify viewer-bg-style listeners.
       mockBus.emit('v1.payment.tokens.spend.succeeded', {
         tokensAmount: p.tokensAmount,
         tokensSpendData: p.tokensSpendData,
         paymentData: data,
       });
-      // And confirm via toast so the user sees something happened.
       mockBus.emit('v1.ext.whispered', {
         type: 'director.toast',
-        targetUserId: String(SELF_USER[role].id),
+        targetUserId: selfWhisperTarget(role),
         tone: 'success',
         message: `[mock] spent ${p.tokensAmount} tk`,
       });
       return undefined;
     });
-  }, [role]);
-
-  // Re-broadcast scenario state + context every time something changes.
-  const broadcastActive = () => {
-    mockBus.emit('v1.ext.context.updated', { context: buildContext(role) });
-    mockBus.emit('v1.ext.whispered', { ...scenario.state, updatedAt: Date.now() });
-
-    // For non-guest, non-model roles, send a sensible self-allocations snapshot
-    // so the goal-card highlights are visible without a manual trigger.
-    const me = SELF_USER[role];
-    if (!me.isGuest && !me.isModel) {
-      const goals = scenario.state.menuGoals;
-      const allocs: Array<{ itemId: string; title: string; allocated: number }> = [];
-      let total = 0;
-      if (goals[0]) {
-        const a = Math.min(25, goals[0].progress || 25);
-        allocs.push({ itemId: goals[0].id, title: goals[0].title, allocated: a });
-        total += a;
-      }
-      if (goals[1]) {
-        const a = Math.min(15, goals[1].progress || 15);
-        allocs.push({ itemId: goals[1].id, title: goals[1].title, allocated: a });
-        total += a;
-      }
-      mockBus.emit('v1.ext.whispered', {
-        type: 'director.self.allocations',
-        targetUserId: String(me.id),
-        total,
-        allocations: allocs,
-      });
-    }
-  };
+  }, [role, scenario, scenarioId, broadcastActive]);
 
   useEffect(() => {
-    // small delay to let Apps mount their subscribers
     const id = setTimeout(broadcastActive, 50);
     return () => clearTimeout(id);
-  }, [scenarioId, role]);
+  }, [scenarioId, role, broadcastActive]);
 
   const fireToast = () => {
     mockBus.emit('v1.ext.whispered', {
       type: 'director.toast',
-      targetUserId: String(SELF_USER[role].id),
+      targetUserId: selfWhisperTarget(role),
       tone: 'success',
       message: `Toast #${toastSeq++}`,
     });
   };
 
   const fireSelfAllocations = () => {
+    const goals = scenario.state.menuGoals;
+    if (goals.length === 0) {
+      mockBus.emit('v1.ext.whispered', {
+        type: 'director.toast',
+        targetUserId: selfWhisperTarget(role),
+        tone: 'warn',
+        message: '[mock] No tip menu in this scenario',
+      });
+      return;
+    }
+    const g0 = goals[0]!;
+    const g1 = goals[1];
+    const allocations = g1
+      ? [
+          { itemId: g0.id, title: g0.title, allocated: Math.min(25, g0.progress || 15) },
+          { itemId: g1.id, title: g1.title, allocated: Math.min(15, g1.progress || 10) },
+        ]
+      : [{ itemId: g0.id, title: g0.title, allocated: Math.min(40, g0.progress || 20) }];
+    const total = allocations.reduce((s, x) => s + x.allocated, 0);
     mockBus.emit('v1.ext.whispered', {
       type: 'director.self.allocations',
-      targetUserId: String(SELF_USER[role].id),
-      total: 45,
-      allocations: [
-        { itemId: 'g1', title: 'Close-up', allocated: 25 },
-        { itemId: 'g2', title: 'Dance', allocated: 20 },
-      ],
+      targetUserId: selfWhisperTarget(role),
+      total,
+      allocations,
     });
   };
 
@@ -230,20 +269,28 @@ export const Playground = () => {
         <section>
           <div class="pg-label">Role</div>
           <div class="pg-row">
-            {(['guest', 'viewer', 'director', 'model'] as Role[]).map((r) => (
-              <button
-                type="button"
-                key={r}
-                class={`pg-pill${role === r ? ' is-on' : ''}`}
-                onClick={() => setRole(r)}
-              >
-                {r}
-              </button>
-            ))}
+            {(['guest', 'viewer', 'director', 'model'] as Role[]).map((r) => {
+              const availability = roleAvailability[r];
+              return (
+                <button
+                  type="button"
+                  key={r}
+                  class={`pg-pill${role === r ? ' is-on' : ''}`}
+                  disabled={!availability.enabled}
+                  title={availability.enabled ? undefined : availability.reason}
+                  onClick={() => setRole(r)}
+                >
+                  {r}
+                </button>
+              );
+            })}
           </div>
           <div class="pg-tip">
             "director" = signed-in viewer whose id matches the scenario's leader.
           </div>
+          {!roleAvailability.director.enabled && (
+            <div class="pg-tip">Director is disabled for this scenario: not LIVE or no leader yet.</div>
+          )}
         </section>
 
         <section>
@@ -310,7 +357,7 @@ export const Playground = () => {
             </button>
             <button class="pg-row-btn" onClick={fireSelfAllocations}>
               <span class="pg-row-btn-title">Set self allocations</span>
-              <span class="pg-row-btn-sub">Show the "Your allocations" block</span>
+              <span class="pg-row-btn-sub">Uses current scenario menu goals (if any)</span>
             </button>
           </div>
         </section>
@@ -325,7 +372,7 @@ export const Playground = () => {
           <div class="pg-stage-frame">
             {slot === 'tab' && <MainApp />}
             {slot === 'overlay' && <OverlayApp />}
-            {slot === 'settings' && <SettingsApp />}
+            {slot === 'settings' && <SettingsApp key={scenarioId} />}
           </div>
         </div>
       </main>

@@ -4,7 +4,11 @@ import { createExtHelper } from '@stripchatdev/ext-helper';
 import { isObject } from '../../shared/format';
 import type { WhisperEnvelope } from '../../shared/state';
 
-type SpendKind = 'director.menu.tip' | 'director.command.issue' | 'director.menu.reallocate';
+type SpendKind =
+  | 'director.menu.tip'
+  | 'director.command.issue'
+  | 'director.menu.reallocate'
+  | 'director.chair.chase';
 
 type SpendIntent =
   | {
@@ -26,6 +30,11 @@ type SpendIntent =
       amount: number;
       userId: string;
       username: string;
+    }
+  | {
+      kind: 'director.chair.chase';
+      userId: string;
+      username: string;
     };
 
 const isSpendIntent = (data: unknown): data is SpendIntent & { kind: SpendKind } => {
@@ -34,7 +43,8 @@ const isSpendIntent = (data: unknown): data is SpendIntent & { kind: SpendKind }
   return (
     kind === 'director.menu.tip' ||
     kind === 'director.command.issue' ||
-    kind === 'director.menu.reallocate'
+    kind === 'director.menu.reallocate' ||
+    kind === 'director.chair.chase'
   );
 };
 
@@ -72,6 +82,14 @@ export const startViewerBackground = (): (() => void) => {
         fromItemId: String(intent.fromItemId || ''),
         toItemId: String(intent.toItemId || ''),
         amount: Math.max(0, Math.floor(Number(intent.amount) || 0)),
+        userId: String(intent.userId || payload.paymentData.userId || ''),
+        username: String(intent.username || ''),
+      };
+    } else if (intent.kind === 'director.chair.chase') {
+      envelope = {
+        type: 'director.chair.chase',
+        paymentData: payload.paymentData,
+        amount: Math.max(0, Math.floor(Number(payload.paymentData.amount))) || 0,
         userId: String(intent.userId || payload.paymentData.userId || ''),
         username: String(intent.username || ''),
       };

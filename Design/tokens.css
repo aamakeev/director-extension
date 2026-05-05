@@ -1,0 +1,94 @@
+/* Director — design tokens
+   Концепция: режиссёрский пульт мастер-студии.
+   Тёплый янтарь, латунь, графит, плёночный шум. Палитра 0 (тёплый янтарь).
+*/
+
+:root {
+  /* Brand */
+  --d-amber: #e6a04a;
+  --d-amber-hot: #ffb86b;
+  --d-amber-deep: #c97a3a;
+  --d-amber-darker: #b56a2c;
+  --d-brass: #d4a559;
+  --d-brass-dim: #8a6a35;
+  --d-cream: #f4f1ea;
+  --d-bone: #e8e3d6;
+
+  /* Surface (graphite anodized aluminum) */
+  --d-graphite-0: #0d0c0b;
+  --d-graphite-1: #15130f;
+  --d-graphite-2: #1f1c17;
+  --d-graphite-3: #2a2620;
+  --d-graphite-4: #3a342b;
+  --d-graphite-5: #4a4239;
+
+  /* Screen (VFD nixie-orange) */
+  --d-vfd-bg-top: rgba(46, 32, 14, 0.96);
+  --d-vfd-bg-bot: rgba(20, 14, 6, 0.96);
+  --d-vfd-fg: #ffb86b;
+  --d-vfd-dim: rgba(255, 184, 107, 0.55);
+
+  /* States */
+  --d-rec: #ff3b25;
+  --d-rec-glow: rgba(255, 59, 37, 0.7);
+  --d-shield: #6a9bd8;
+  --d-danger: #e25668;
+  --d-success: #6bba6e;
+
+  /* Type */
+  --d-font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --d-font-body: "Inter", system-ui, -apple-system, sans-serif;
+  --d-font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  --d-font-num: "Space Grotesk", "Inter", system-ui, sans-serif;
+
+  /* Effects */
+  --d-noise:
+    repeating-conic-gradient(
+      from 0deg at 50% 50%,
+      rgba(255, 255, 255, 0.012) 0deg,
+      rgba(0, 0, 0, 0.012) 1deg,
+      rgba(255, 255, 255, 0.012) 2deg
+    );
+  --d-machined:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.025) 0,
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  --d-brushed:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.018) 0,
+      rgba(0, 0, 0, 0.04) 1px,
+      rgba(255, 255, 255, 0.018) 2px,
+      transparent 3px
+    );
+}
+
+/* Icon system. Three styles via Tweaks: line / filled / mono.
+   Each .d-icon is a 18px SVG square; the same data, three render modes. */
+
+.d-icon {
+  width: 1em;
+  height: 1em;
+  display: inline-block;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+[data-icon-style="filled"] .d-icon {
+  fill: currentColor;
+  stroke: rgba(0, 0, 0, 0.25);
+  stroke-width: 0.8;
+}
+
+[data-icon-style="mono"] .d-icon {
+  fill: currentColor;
+  stroke: none;
+}

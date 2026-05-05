@@ -64,12 +64,32 @@ const baseState = (): DirectorPublicState => ({
   updatedAt: now(),
 });
 
+/** Shape returned from `v1.tipMenu.get` for playground mocks */
+export type ScenarioSdkTipMenu = {
+  isEnabled: boolean;
+  items: Array<{ activity: string; price: number }>;
+};
+
+export const DEFAULT_SCENARIO_SDK_TIP_MENU: ScenarioSdkTipMenu = {
+  isEnabled: true,
+  items: [
+    { activity: 'Close-up', price: 25 },
+    { activity: 'Dance', price: 40 },
+    { activity: 'Look in eyes', price: 30 },
+  ],
+};
+
 export type Scenario = {
   id: string;
   label: string;
   description: string;
   state: DirectorPublicState;
+  /** Omit to use {@link DEFAULT_SCENARIO_SDK_TIP_MENU} */
+  sdkTipMenu?: ScenarioSdkTipMenu;
 };
+
+export const getSdkTipMenuForScenario = (scenario: Scenario): ScenarioSdkTipMenu =>
+  scenario.sdkTipMenu ?? DEFAULT_SCENARIO_SDK_TIP_MENU;
 
 export const SCENARIOS: Scenario[] = [
   {
@@ -342,13 +362,14 @@ export const SCENARIOS: Scenario[] = [
     id: 'no_menu',
     label: '6 · LIVE, empty tip menu',
     description: 'Edge case: model removed all tip menu items.',
+    sdkTipMenu: { isEnabled: true, items: [] },
     state: {
       ...baseState(),
       isLive: true,
       totalSessionTips: 60,
       director: { id: 'u1', name: 'rose_taker', total: 60, startedAt: now() - 10_000 },
       menuGoals: [],
-      activityFeed: [{ id: 'a1', at: now(), text: 'Tip menu empty', tone: 'warn' }],
+      activityFeed: [],
     },
   },
 ];

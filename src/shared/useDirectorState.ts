@@ -3,7 +3,7 @@ import { createExtHelper } from '@stripchatdev/ext-helper';
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { isWhisperEnvelope, type DirectorActivityBroadcast, type DirectorPublicState } from './state';
-import { resolveRole, userIdString, type DirectorRole } from './role';
+import { resolveRole, whisperSelfId, type DirectorRole } from './role';
 
 export type SelfAllocations = {
   total: number;
@@ -85,7 +85,7 @@ export const useDirectorClient = (): DirectorClient => {
 
     const onContextUpdated = (payload: TEvents['v1.ext.context.updated']) => {
       setContext(payload.context);
-      meRef.current = userIdString(payload.context.user);
+      meRef.current = whisperSelfId(payload.context.user);
     };
 
     ext.subscribe('v1.ext.whispered', onWhispered);
@@ -102,7 +102,7 @@ export const useDirectorClient = (): DirectorClient => {
     void ext.makeRequest('v1.ext.context.get', null).then((ctx) => {
       if (cancelled) return;
       setContext(ctx);
-      meRef.current = userIdString(ctx.user);
+      meRef.current = whisperSelfId(ctx.user);
       requestState();
     });
 

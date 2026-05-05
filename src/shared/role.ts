@@ -15,6 +15,15 @@ export const userIdString = (user: TV1ExtUser | undefined): string => {
   return String(user.id);
 };
 
+/** Local identity for whisper toasts / self.allocations matching (guests have no numeric id). */
+export const whisperSelfId = (user: TV1ExtUser | undefined): string => {
+  if (!user) return '';
+  if (user.isGuest) {
+    return typeof user.guestHash === 'string' ? user.guestHash : '';
+  }
+  return String(user.id);
+};
+
 export const usernameString = (user: TV1ExtUser | undefined): string => {
   if (!user) return 'viewer';
   if (user.isGuest) return 'Guest';

@@ -7,6 +7,7 @@
     "mocks": "vite --mode mocks",
     "build": "tsc && vite build",
     "build:mocks": "vite build --mode mocks",
+    "build:standalone-html": "node scripts/build-standalone-html.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
