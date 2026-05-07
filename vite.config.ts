@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: isMocks ? 'dist-mocks' : 'dist',
       rollupOptions: {
-        input: isMocks
+        input: (isMocks
           ? { mocks: resolve(__dirname, 'mocks.html') }
           : {
               mainGameFun: resolve(__dirname, 'mainGameFun.html'),
@@ -34,7 +34,7 @@ export default defineConfig(({ mode }) => {
               backgroundViewer: resolve(__dirname, 'backgroundViewer.html'),
               rightOverlay: resolve(__dirname, 'rightOverlay.html'),
               settings: resolve(__dirname, 'settings.html'),
-            },
+            }) as Record<string, string>,
       },
     },
     plugins: [preact()],
