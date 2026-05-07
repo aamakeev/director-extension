@@ -6,13 +6,14 @@ const now = () => Date.now();
 
 const baseState = (): DirectorPublicState => ({
   type: 'director.state',
+  gameAccepting: true,
   isLive: false,
   totalSessionTips: 0,
   preproductionGoal: 50,
   overtakeMargin: DEFAULT_SETTINGS.overtakeMargin,
   minTenureSec: DEFAULT_SETTINGS.minTenureSec,
   commandCostTokens: DEFAULT_SETTINGS.commandCostTokens,
-  director: { id: null, name: 'Casting…', total: 0, startedAt: 0 },
+  director: { id: null, name: 'Open seat', total: 0, startedAt: 0 },
   challenger: { id: null, name: 'No challenger', total: 0 },
   pressure: {
     gap: 0,
@@ -95,17 +96,17 @@ export const SCENARIOS: Scenario[] = [
   {
     id: 'preshow_empty',
     label: '1 · Pre-show, empty',
-    description: 'No tips yet, casting in progress.',
+    description: 'No tips yet; unlock bar empty.',
     state: baseState(),
   },
   {
     id: 'preshow_partial',
     label: '2 · Pre-show, partial funding',
-    description: 'Halfway to opening shot, leaderboard forming.',
+    description: 'Halfway to going live; chase totals forming.',
     state: {
       ...baseState(),
       totalSessionTips: 28,
-      director: { id: null, name: 'Casting…', total: 0, startedAt: 0 },
+      director: { id: null, name: 'Open seat', total: 0, startedAt: 0 },
       challenger: { id: 'u2', name: 'velvet_42', total: 18 },
       menuGoals: [
         {
@@ -150,7 +151,7 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: 'live_calm',
-    label: '3 · LIVE, calm leader',
+    label: '3 · Live, calm Director',
     description: 'Show is live, director comfortably ahead.',
     state: {
       ...baseState(),
@@ -199,7 +200,7 @@ export const SCENARIOS: Scenario[] = [
         },
       ],
       activityFeed: [
-        { id: 'a1', at: now(), text: 'We are LIVE. Director: rose_taker', tone: 'spotlight' },
+        { id: 'a1', at: now(), text: "We're LIVE — Director: rose_taker", tone: 'spotlight' },
         { id: 'a2', at: now() - 1500, text: 'rose_taker +50tk → "Dance"', tone: 'success' },
       ],
     },
@@ -207,7 +208,7 @@ export const SCENARIOS: Scenario[] = [
   {
     id: 'live_critical',
     label: '4 · LIVE, critical pressure',
-    description: 'Challenger is breathing down the leader\u2019s neck.',
+    description: 'Chase is breathing down the Director\u2019s neck.',
     state: {
       ...baseState(),
       isLive: true,
@@ -353,7 +354,7 @@ export const SCENARIOS: Scenario[] = [
         visual_closeup: 2_000,
       },
       activityFeed: [
-        { id: 'a1', at: now(), text: 'Director call: \u{1F910} Whisper', tone: 'spotlight' },
+        { id: 'a1', at: now(), text: 'Cue: \u{1F910} Whisper', tone: 'spotlight' },
         { id: 'a2', at: now() - 4000, text: 'rose_taker +30tk \u2192 "Look in eyes"', tone: 'success' },
       ],
     },

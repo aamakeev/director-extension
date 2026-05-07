@@ -5,7 +5,7 @@ import { slugify, isObject } from './format';
 export type DirectorMenuItem = {
   id: string;
   title: string;
-  /** Marked-up price viewers see in Director (basePrice * (1 + markup%)). */
+  /** Marked-up price viewers see on stage (basePrice * (1 + markup%)). */
   price: number;
   /** Original tip-menu price set by the model in Stripchat. */
   basePrice: number;
@@ -92,6 +92,8 @@ export type DirectorActivityBroadcast = {
 
 export type DirectorPublicState = {
   type: 'director.state';
+  /** When false, tips still land on menu lines but the room will not unlock Director mode until you resume. */
+  gameAccepting: boolean;
   isLive: boolean;
   totalSessionTips: number;
   preproductionGoal: number;
@@ -166,6 +168,14 @@ export type WhisperEnvelope =
     }
   | {
       type: 'director.show.reset';
+      modelId: string;
+    }
+  | {
+      type: 'director.game.stop';
+      modelId: string;
+    }
+  | {
+      type: 'director.game.start';
       modelId: string;
     }
   | DirectorActivityBroadcast;

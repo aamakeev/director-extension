@@ -42,6 +42,7 @@ const TICK_MS = 1000;
 const HEARTBEAT_MS = 7_000;
 
 type ModelGameState = {
+  gameAccepting: boolean;
   isLive: boolean;
   totalSessionTips: number;
   director: { id: string | null; name: string; total: number; startedAt: number };
@@ -59,10 +60,11 @@ type ModelGameState = {
 };
 
 const createInitialState = (): ModelGameState => ({
+  gameAccepting: false,
   isLive: false,
   totalSessionTips: 0,
-  director: { id: null, name: 'Casting…', total: 0, startedAt: 0 },
-  challenger: { id: null, name: 'No challenger', total: 0 },
+  director: { id: null, name: 'Open seat', total: 0, startedAt: 0 },
+  challenger: { id: null, name: 'No chase yet', total: 0 },
   users: {},
   menu: [],
   menuSource: 'fallback',
@@ -170,7 +172,7 @@ export const startModelBackground = (): (() => void) => {
   const setChallengerFrom = (sorted: DirectorUser[]) => {
     const candidate = sorted.find((u) => u.id !== state.director.id);
     if (!candidate) {
-      state.challenger = { id: null, name: 'No challenger', total: 0 };
+      state.challenger = { id: null, name: 'No chase yet', total: 0 };
       return;
     }
     state.challenger = { id: candidate.id, name: candidate.name, total: candidate.total };
@@ -188,11 +190,13 @@ export const startModelBackground = (): (() => void) => {
     };
     state.flashAt = Date.now();
     if (reason === 'liveStart') {
-      appendActivity(`We are LIVE. Director: ${user.name}`, 'spotlight');
-      sendPublicChat(`Director LIVE — opening goal met! ${user.name} runs the remote.`);
+      appendActivity(`We're LIVE — Director: ${user.name}`, 'spotlight');
+      sendPublicChat(
+        `We're LIVE! Tip goal met — ${user.name} is Director and calls the shots.`,
+      );
     } else if (reason === 'overtake') {
-      appendActivity(`Power shift — ${user.name} took the chair`, 'spotlight');
-      sendPublicChat(`Director: ${user.name} took the remote.`);
+      appendActivity(`New Director: ${user.name}`, 'spotlight');
+      sendPublicChat(`${user.name} is now Director.`);
     }
   };
 
@@ -200,6 +204,7 @@ export const startModelBackground = (): (() => void) => {
     const sorted = sortedUsers();
 
     if (
+      state.gameAccepting &&
       !state.isLive &&
       state.totalSessionTips >= settings.preproductionGoal &&
       sorted.length
@@ -223,8 +228,8 @@ export const startModelBackground = (): (() => void) => {
     }
 
     if (!sorted.length) {
-      state.director = { id: null, name: 'Casting…', total: 0, startedAt: 0 };
-      state.challenger = { id: null, name: 'No challenger', total: 0 };
+      state.director = { id: null, name: 'Open seat', total: 0, startedAt: 0 };
+      state.challenger = { id: null, name: 'No chase yet', total: 0 };
       return;
     }
 
@@ -343,7 +348,7 @@ export const startModelBackground = (): (() => void) => {
                 .map((c) => `${c.name} ${c.amount} tk`)
                 .join(', ')}).`;
       sendPublicChat(
-        `Director — room collected for "${g.title}" (${g.price} tk). ${detail} Thank you for "${g.title}".`,
+        `Stage — room filled "${g.title}" (${g.price} tk). ${detail} Thank you for "${g.title}".`,
       );
     }
   };
@@ -397,6 +402,7 @@ export const startModelBackground = (): (() => void) => {
       : 0;
     return {
       type: 'director.state',
+      gameAccepting: state.gameAccepting,
       isLive: state.isLive,
       totalSessionTips: state.totalSessionTips,
       preproductionGoal: settings.preproductionGoal,
@@ -519,7 +525,7 @@ export const startModelBackground = (): (() => void) => {
     if (!payment) return;
 
     if (!state.isLive || !state.director.id) {
-      sendToast(envelope.userId, 'warn', 'Chair race is only LIVE');
+      sendToast(envelope.userId, 'warn', 'Director takeover only works while we are live');
       return;
     }
 
@@ -527,12 +533,12 @@ export const startModelBackground = (): (() => void) => {
       ? Math.max(0, state.director.startedAt + settings.minTenureSec * 1000 - Date.now())
       : 0;
     if (tenureLeft > 0) {
-      sendToast(envelope.userId, 'warn', 'Wait until the lead safe window ends');
+      sendToast(envelope.userId, 'warn', 'Wait until the Director safe window ends');
       return;
     }
 
     if (state.director.id === envelope.userId) {
-      sendToast(envelope.userId, 'warn', 'You already hold the chair');
+      sendToast(envelope.userId, 'warn', 'You are already the Director');
       return;
     }
 
@@ -553,7 +559,7 @@ export const startModelBackground = (): (() => void) => {
 
     const amount = Math.max(0, Math.floor(envelope.amount));
     if (amount !== need) {
-      sendToast(envelope.userId, 'warn', `Tip exactly ${need} tk to take the chair`);
+      sendToast(envelope.userId, 'warn', `Tip exactly ${need} tk to become Director`);
       return;
     }
 
@@ -570,8 +576,8 @@ export const startModelBackground = (): (() => void) => {
     state.totalSessionTips += amount;
 
     syncLeadership(user.id);
-    appendActivity(`${user.name} +${amount}tk → chair race`, 'success');
-    sendToast(user.id, 'success', `${amount}tk toward the chair`);
+    appendActivity(`${user.name} +${amount}tk → Director chase`, 'success');
+    sendToast(user.id, 'success', `${amount}tk toward the Director seat`);
     checkMenuGoalCompletions();
     sendSelfAllocations(user.id);
     broadcastState();
@@ -637,11 +643,11 @@ export const startModelBackground = (): (() => void) => {
       return;
     }
     if (!state.isLive) {
-      sendToast(envelope.userId, 'warn', 'Console unlocks after we go LIVE');
+      sendToast(envelope.userId, 'warn', 'Commands unlock once we are LIVE');
       return;
     }
     if (!state.director.id || state.director.id !== envelope.userId) {
-      sendToast(envelope.userId, 'warn', 'Only the current Director can issue commands');
+      sendToast(envelope.userId, 'warn', 'Only the Director can send commands');
       return;
     }
     const now = Date.now();
@@ -694,7 +700,7 @@ export const startModelBackground = (): (() => void) => {
     state.commandHistory = state.commandHistory.slice(0, 12);
     state.flashAt = now;
 
-    appendActivity(`Director call: ${command.emoji} ${command.label}`, 'spotlight');
+    appendActivity(`Director: ${command.emoji} ${command.label}`, 'spotlight');
     relayActivity({
       type: 'director.activity',
       id: entry.id,
@@ -705,9 +711,36 @@ export const startModelBackground = (): (() => void) => {
       emoji: command.emoji,
       issuedByName: envelope.username,
     });
-    sendPublicChat(`Director call: ${command.emoji} ${command.label}`);
+    sendPublicChat(`Director called: ${command.emoji} ${command.label}`);
 
-    sendToast(envelope.userId, 'success', `"${command.label}" sent on stage`);
+    sendToast(envelope.userId, 'success', `"${command.label}" sent`);
+    broadcastState();
+  };
+
+  const verifyModelWhisper = (modelId: unknown): boolean => {
+    const expected = String(context.model?.id ?? '');
+    return Boolean(expected && String(modelId) === expected);
+  };
+
+  const pauseGameRound = () => {
+    state.gameAccepting = false;
+    state.isLive = false;
+    state.director = { id: null, name: 'Open seat', total: 0, startedAt: 0 };
+    state.challenger = { id: null, name: 'No chase yet', total: 0 };
+    state.currentPerformance = null;
+    state.queue = [];
+    state.commandHistory = [];
+    state.commandCooldowns = {};
+    state.flashAt = 0;
+    void clearHostActivity(ext, hostActivitySlot);
+    appendActivity('Broadcaster paused Director mode', 'info');
+    broadcastState();
+  };
+
+  const resumeGameRound = () => {
+    state.gameAccepting = true;
+    appendActivity('Broadcaster resumed Director mode', 'info');
+    syncLeadership(null);
     broadcastState();
   };
 
@@ -740,6 +773,16 @@ export const startModelBackground = (): (() => void) => {
       void reloadSettings();
       return;
     }
+    if (data.type === 'director.game.stop') {
+      if (!verifyModelWhisper(data.modelId)) return;
+      pauseGameRound();
+      return;
+    }
+    if (data.type === 'director.game.start') {
+      if (!verifyModelWhisper(data.modelId)) return;
+      resumeGameRound();
+      return;
+    }
     if (data.type === 'director.show.reset') {
       const modelId = String(context.model?.id ?? '');
       if (!modelId || String(data.modelId) !== modelId) return;
@@ -749,10 +792,37 @@ export const startModelBackground = (): (() => void) => {
       state.menu = preservedMenu;
       state.menuSource = preservedSource;
       menuGoalsCompleted.clear();
+      state.gameAccepting = false;
       void clearHostActivity(ext, hostActivitySlot);
-      appendActivity('Show reset by the model', 'spotlight');
+      appendActivity('Strike — model cleared the set', 'spotlight');
       broadcastState();
     }
+  };
+
+  const relayChairChaseSpendFromModelClient = (
+    payload: TEvents['v1.payment.tokens.spend.succeeded'],
+  ) => {
+    const intent = payload.tokensSpendData;
+    if (!isObject(intent) || intent.kind !== 'director.chair.chase') return;
+    const userId = String(
+      (intent as { userId?: string }).userId || payload.paymentData.userId || '',
+    );
+    const username = String((intent as { username?: string }).username || '');
+    const envelope: WhisperEnvelope = {
+      type: 'director.chair.chase',
+      paymentData: payload.paymentData,
+      amount: Math.max(0, Math.floor(Number(payload.paymentData.amount))) || 0,
+      userId,
+      username,
+    };
+    void ext
+      .makeRequest('v1.ext.whisper', {
+        data: envelope as Record<string, unknown>,
+        paymentData: payload.paymentData,
+      })
+      .catch((err: unknown) =>
+        reportError('director model chair chase relay whisper failed', { err: String(err) }),
+      );
   };
 
   const handleTipMenuUpdated = (payload: TEvents['v1.tipMenu.updated']) => {
@@ -787,7 +857,7 @@ export const startModelBackground = (): (() => void) => {
           startedAt: now,
           endsAt: now + next.durationMs,
         };
-        appendActivity(`On stage: ${next.emoji} ${next.label}`, 'info');
+        appendActivity(`Live now: ${next.emoji} ${next.label}`, 'info');
         relayActivity({
           type: 'director.activity',
           id: next.id,
@@ -800,7 +870,7 @@ export const startModelBackground = (): (() => void) => {
         });
       } else {
         state.currentPerformance = null;
-        appendActivity('Stage clear', 'info');
+        appendActivity('Nothing playing — ready for the next order', 'info');
       }
       dirty = true;
     }
@@ -854,6 +924,7 @@ export const startModelBackground = (): (() => void) => {
     }
 
     ext.subscribe('v1.ext.whispered', handleWhispered);
+    ext.subscribe('v1.payment.tokens.spend.succeeded', relayChairChaseSpendFromModelClient);
     ext.subscribe('v1.tipMenu.updated', handleTipMenuUpdated);
     ext.subscribe('v1.ext.context.updated', handleContextUpdated);
     ext.subscribe('v1.ext.activity.busy', handleActivityBusy);
@@ -879,6 +950,7 @@ export const startModelBackground = (): (() => void) => {
     if (tickTimer) clearInterval(tickTimer);
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     ext.unsubscribe('v1.ext.whispered', handleWhispered);
+    ext.unsubscribe('v1.payment.tokens.spend.succeeded', relayChairChaseSpendFromModelClient);
     ext.unsubscribe('v1.tipMenu.updated', handleTipMenuUpdated);
     ext.unsubscribe('v1.ext.context.updated', handleContextUpdated);
     ext.unsubscribe('v1.ext.activity.busy', handleActivityBusy);

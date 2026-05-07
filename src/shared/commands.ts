@@ -13,44 +13,24 @@ export type DirectorCommandGroup = {
   commands: Array<Pick<DirectorCommand, 'id' | 'label' | 'emoji'>>;
 };
 
+/**
+ * Short list of actions only — large tap targets in the remote pad depend on keeping this small.
+ * Stable `id` values are kept where possible for cooldown / spend payloads.
+ */
 export const COMMAND_GROUPS: DirectorCommandGroup[] = [
   {
-    id: 'visual',
-    title: 'VISUAL',
-    emoji: '🎥',
+    id: 'actions',
+    title: 'ACTIONS',
+    emoji: '🎬',
     commands: [
       { id: 'visual_closeup', label: 'Close-up', emoji: '🔍' },
-      { id: 'visual_angle', label: 'Change angle', emoji: '🎞' },
-      { id: 'visual_eyes', label: 'Look in eyes', emoji: '👁' },
-    ],
-  },
-  {
-    id: 'tempo',
-    title: 'TEMPO',
-    emoji: '⏱',
-    commands: [
+      { id: 'visual_eyes', label: 'Eyes', emoji: '👁' },
       { id: 'tempo_slow', label: 'Slow', emoji: '🐌' },
-      { id: 'tempo_turbo', label: 'Turbo', emoji: '⚡' },
-      { id: 'tempo_freeze', label: 'Freeze', emoji: '🧊' },
-    ],
-  },
-  {
-    id: 'sound',
-    title: 'SOUND',
-    emoji: '🎙',
-    commands: [
+      { id: 'tempo_turbo', label: 'Fast', emoji: '⚡' },
+      { id: 'tempo_freeze', label: 'Hold', emoji: '🧊' },
       { id: 'sound_whisper', label: 'Whisper', emoji: '🤫' },
-      { id: 'sound_dirty_talk', label: 'Dirty talk', emoji: '🔥' },
-      { id: 'sound_silence', label: 'Silence', emoji: '🤐' },
-    ],
-  },
-  {
-    id: 'acting',
-    title: 'ACTING',
-    emoji: '🎭',
-    commands: [
-      { id: 'acting_good', label: 'Good girl', emoji: '😇' },
-      { id: 'acting_bad', label: 'Bad girl', emoji: '😈' },
+      { id: 'sound_dirty_talk', label: 'Heat', emoji: '🔥' },
+      { id: 'sound_silence', label: 'Quiet', emoji: '🤐' },
     ],
   },
 ];

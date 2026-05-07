@@ -32,8 +32,8 @@ type FieldGroup = {
 
 const PREPRODUCTION_FIELD: FieldDef = {
   key: 'preproductionGoal',
-  label: 'Tokens to unlock Director',
-  hint: 'Sum of tips on menu lines until unlock.',
+  label: 'Tokens to go live',
+  hint: 'Room tips on menu lines stack until this total unlocks the show and Director seat.',
   min: 10,
   unit: 'tk',
 };
@@ -42,7 +42,7 @@ const PREPRODUCTION_FIELD: FieldDef = {
 const MARKUP_FIELD: FieldDef = {
   key: 'tipMenuMarkupPercent',
   label: 'Markup on each menu line',
-  hint: 'e.g. 10% on 50 tk → 55 tk in Director.',
+  hint: 'e.g. 10% on 50 tk → 55 tk shown on stage.',
   min: 0,
   max: 200,
   unit: '%',
@@ -51,13 +51,13 @@ const MARKUP_FIELD: FieldDef = {
 const GROUPS: FieldGroup[] = [
   {
     id: 'control',
-    title: '2 · Director control',
+    title: '2 · Director remote',
     preview: 'cost',
     fields: [
       {
         key: 'commandCostTokens',
         label: 'Cost per command press',
-        hint: 'What the Director pays each time they tap a command on the remote.',
+        hint: 'What the Director pays each time they send an action from the remote.',
         min: 1,
         max: 100,
         unit: 'tk',
@@ -82,21 +82,21 @@ const GROUPS: FieldGroup[] = [
   },
   {
     id: 'race',
-    title: '3 · Leader race',
+    title: '3 · Spotlight chase',
     preview: 'protection',
     fields: [
       {
         key: 'overtakeMargin',
-        label: 'Tokens required to overtake the leader',
-        hint: 'A challenger needs this many tokens above the leader\u2019s total to take the chair.',
+        label: 'Tokens required to overtake the Director',
+        hint: 'A chasing viewer needs this many tokens above the Director\u2019s total to take the seat.',
         min: 1,
         max: 1_000,
         unit: 'tk',
       },
       {
         key: 'minTenureSec',
-        label: 'Lead protection',
-        hint: 'After taking the chair the Director is safe for this long. Shown to the Director and viewers as a countdown.',
+        label: 'Director protection',
+        hint: 'After someone becomes Director they cannot be replaced for this long. Everyone sees the countdown.',
         min: 5,
         max: 600,
         unit: 'sec',
@@ -321,7 +321,7 @@ const HowItWorks = ({
 
   const preproductionHint = hasTipMenu
     ? PREPRODUCTION_FIELD.hint
-    : 'Room total before unlock. Viewers match the bar in the slot.';
+    : 'House tally before going live. Viewers fill the bar in the slot.';
 
   const renderChipBar = (tipA: number, tipB: number, tipC: number) => (
     <div class="pa-bar-wrap">
@@ -350,19 +350,19 @@ const HowItWorks = ({
   return (
     <section class="settings-section">
       <header class="settings-section-head">
-        <h2>{hasTipMenu ? '1 · Unlock and menu pricing' : '1 · Unlock Director'}</h2>
+        <h2>{hasTipMenu ? '1 · Go live & menu pricing' : '1 · Unlock the show'}</h2>
       </header>
 
       {hasTipMenu ? (
         <p class="sr-only">
-          Different viewers can send partial tips toward the same menu line until the Director price
+          Different viewers can send partial tips toward the same menu line until the on-stream price
           is met. Markup adds to your menu prices; at 0% prices match your tip menu. When the room
-          reaches your token goal, the Director control unlocks.
+          reaches your token goal, the show goes live and someone becomes Director.
         </p>
       ) : (
         <p class="sr-only">
           Illustration: several viewers send partial tips; each contribution stacks toward the same
-          unlock total until Director control unlocks.
+          unlock total until the show goes live.
         </p>
       )}
 
@@ -452,7 +452,7 @@ const HowItWorks = ({
 
 /* ---------------- Visual previews ---------------- */
 
-const DECK_DEMO_COMMANDS = COMMAND_GROUPS.flatMap((g) => g.commands).slice(0, 6);
+const DECK_DEMO_COMMANDS = COMMAND_GROUPS.flatMap((g) => g.commands);
 
 const fmtClock = (sec: number) => {
   const s = Math.max(0, Math.floor(sec));
@@ -481,15 +481,15 @@ const RemoteControlPreview = ({
       <div class="deck-preview" aria-hidden="true">
         <div class="deck-remote">
           <div class="deck-top">
-            <span class="deck-brand">Director</span>
+            <span class="deck-brand">by Stripchat</span>
             <span class="deck-rec deck-rec--on">
               <span class="deck-led" />
-              On air
+              Live
             </span>
           </div>
 
           <div class="deck-screen">
-            <span class="deck-screen-label">Now playing</span>
+            <span class="deck-screen-label">Happening now</span>
             <span class="deck-screen-line">
               <span class="deck-screen-emoji">{demoCmd.emoji}</span>
               <span>{demoCmd.label}</span>
@@ -498,9 +498,9 @@ const RemoteControlPreview = ({
           </div>
 
           <div class="deck-pad-head">
-            <span class="deck-pad-title">Control</span>
+            <span class="deck-pad-title">Actions</span>
             <span class="deck-pad-cost">
-              {cost || '–'} tk <span class="deck-pad-slash">/</span> call
+              {cost || '–'} tk each
             </span>
           </div>
 
@@ -539,13 +539,13 @@ const RaceBoardPreview = ({ margin, tenure }: { margin: number; tenure: number }
   return (
     <>
       <p class="sr-only">
-        Sample leader board: lead versus chase totals, gap to overtake, and lead protection
-        countdown.
+        Sample spotlight chase: Director versus chase totals, gap to overtake, and Director
+        protection countdown.
       </p>
       <div class="race-preview" aria-hidden="true">
         <div class="race-row">
-          <div class="race-card race-card--lead">
-            <span class="race-mini">Lead</span>
+          <div class="race-card race-card--director">
+            <span class="race-mini">Director</span>
             <span class="race-name">River</span>
             <span class="race-tk">{leadTk} tk</span>
           </div>

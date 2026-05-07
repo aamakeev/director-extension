@@ -47,7 +47,7 @@ const getRoleAvailability = (scenario: Scenario): RoleAvailability => {
           enabled: false,
           reason: scenario.state.isLive
             ? 'No director in this snapshot'
-            : 'Director does not exist before LIVE',
+            : 'Director seat does not exist before we are LIVE',
         },
   };
 };
@@ -77,6 +77,10 @@ export const Playground = () => {
     setRole(pickFallbackRole(roleAvailability));
   }, [role, roleAvailability]);
 
+  useEffect(() => {
+    if (role === 'model' && slot === 'overlay') setSlot('tab');
+  }, [role, slot]);
+
   // Apply theme to <html>.
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -86,7 +90,7 @@ export const Playground = () => {
     mockBus.emit('v1.ext.context.updated', { context: buildContext(role) });
     mockBus.emit('v1.ext.whispered', { ...scenario.state, updatedAt: Date.now() });
 
-    if (role === 'viewer' || role === 'director') {
+    if (role === 'viewer' || role === 'director' || role === 'model') {
       const goals = scenario.state.menuGoals;
       const allocs: Array<{ itemId: string; title: string; allocated: number }> = [];
       let total = 0;
@@ -247,7 +251,7 @@ export const Playground = () => {
   return (
     <div class="pg-shell">
       <aside class="pg-side">
-        <h1>Director playground</h1>
+        <h1>Stage playground</h1>
         <p class="pg-hint">Mock-only. No Stripchat. Each section drives the slots below.</p>
 
         <section>
@@ -286,10 +290,10 @@ export const Playground = () => {
             })}
           </div>
           <div class="pg-tip">
-            "director" = signed-in viewer whose id matches the scenario's leader.
+            "director" = signed-in viewer whose id matches the scenario's Director.
           </div>
           {!roleAvailability.director.enabled && (
-            <div class="pg-tip">Director is disabled for this scenario: not LIVE or no leader yet.</div>
+            <div class="pg-tip">Director remote is idle in this snapshot — go LIVE with a Director seat.</div>
           )}
         </section>
 

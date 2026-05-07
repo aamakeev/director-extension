@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { COMMAND_GROUPS } from '../../shared/commands';
 import { chairCatchUpTokens } from '../../shared/chairBite';
 import { formatRemaining } from '../../shared/format';
-import { resolveRole, userIdString, usernameString } from '../../shared/role';
+import { resolveRole, userIdString, usernameString, whisperSelfId } from '../../shared/role';
 import { directorExt, useDirectorClient } from '../../shared/useDirectorState';
 import type { DirectorPublicState } from '../../shared/state';
 
@@ -34,7 +34,7 @@ export const App = () => {
       <div class="overlay-shell">
         <div class={`remote${actFlash ? ' is-activity-flash' : ''}`}>
           <div class="remote-top">
-            <span class="remote-brand">Director</span>
+            <span class="remote-brand">by Stripchat</span>
             <span class="remote-rec">
               <span class="led" />
               SYNC
@@ -50,11 +50,20 @@ export const App = () => {
   }
 
   const meId = userIdString(context.user);
+  const selfWhisperId = whisperSelfId(context.user);
   const meName = usernameString(context.user);
   const role = resolveRole(context);
   const isModel = role === 'model';
   const isGuest = role === 'guest';
-  const isDirector = Boolean(state.isLive && state.director?.id && state.director.id === meId);
+  const isDirector = Boolean(
+    state.isLive && state.director?.id && String(state.director.id) === String(selfWhisperId),
+  );
+  const leadIsYou = Boolean(
+    state.isLive &&
+      state.director.id &&
+      selfWhisperId &&
+      String(state.director.id) === String(selfWhisperId),
+  );
   const canControl = isDirector && state.isLive && !isModel && !isGuest;
 
   const sessionPercent = Math.min(
@@ -70,7 +79,7 @@ export const App = () => {
   const openChairRace =
     state.isLive && Boolean(state.director.id) && !state.directorTenureLeftMs;
   const biteNeed =
-    openChairRace && !isModel && !isGuest && !isDirector
+    openChairRace && !isGuest && !isDirector && !isModel
       ? chairCatchUpTokens(
           state.director.total,
           state.overtakeMargin,
@@ -90,6 +99,15 @@ export const App = () => {
         ),
       )
     : 0;
+
+  const suppressChallengerMeter =
+    openChairRace && !isGuest && !isDirector && !isModel && biteNeed > 0;
+
+  const showOpenSeatPanel =
+    openChairRace &&
+    ((isGuest && chairFromZero > 0) ||
+      (!isGuest && !isDirector && biteNeed > 0) ||
+      (!isGuest && isDirector));
 
   const sendCommand = async (commandId: string) => {
     if (!canControl || cmdBusy || !meId) return;
@@ -116,7 +134,7 @@ export const App = () => {
   };
 
   const sendChairBite = async () => {
-    if (!state || !meId || isModel || isGuest || isDirector || biteBusy) return;
+    if (!state || !meId || isGuest || isModel || isDirector || biteBusy) return;
     const n = chairCatchUpTokens(
       state.director.total,
       state.overtakeMargin,
@@ -144,19 +162,27 @@ export const App = () => {
       <div class="overlay-shell">
         <div class={`remote${canControl ? ' is-armed' : ' is-locked'}${actFlash ? ' is-activity-flash' : ''}`}>
         <div class="remote-top">
-          <span class="remote-brand">Director</span>
-          <span class={`remote-rec${state.isLive ? ' is-on' : ''}`}>
+          <span class="remote-brand">by Stripchat</span>
+          <span
+            class={`remote-rec${state.isLive && state.gameAccepting ? ' is-on' : ''}${!state.gameAccepting ? ' is-paused' : ''}`}
+          >
             <span class="led" />
-            {state.isLive ? 'On air' : 'Standby'}
+            {!state.gameAccepting ? 'Paused' : state.isLive ? 'Live' : 'Not live yet'}
           </span>
         </div>
 
         <div class="remote-screen">
           {isModel ? (
             <ModelScreen state={state} />
+          ) : !state.gameAccepting ? (
+            <>
+              <span class="screen-label">Paused</span>
+              <span class="screen-line">Broadcaster paused Director unlock</span>
+              <span class="screen-sub">Tips on menu lines still stack.</span>
+            </>
           ) : current ? (
             <>
-              <span class="screen-label">Now playing</span>
+              <span class="screen-label">Happening now</span>
               <span class="screen-line">
                 <span class="emoji">{current.emoji}</span>
                 <span>{current.label}</span>
@@ -165,26 +191,37 @@ export const App = () => {
               <span class="screen-sub">by {current.issuedByName}</span>
             </>
           ) : state.isLive ? (
-            <>
-              <span class="screen-label">Stage</span>
-              <span class="screen-line">Clear · awaiting call</span>
-            </>
+            isDirector ? (
+              <>
+                <span class="screen-label">Your turn</span>
+                <span class="screen-line">Pick what happens next — tap an action below</span>
+              </>
+            ) : (
+              <>
+                <span class="screen-label">Live</span>
+                <span class="screen-line">
+                  {state.director.id
+                    ? `${state.director.name} has the remote — hang tight for their pick`
+                    : 'Waiting for someone to take the remote'}
+                </span>
+              </>
+            )
           ) : (
             <>
-              <span class="screen-label">Pre-show</span>
+              <span class="screen-label">Unlock Director</span>
               <span class="screen-line">
                 {state.totalSessionTips}
                 <span class="screen-sub">/ {state.preproductionGoal} tk</span>
               </span>
-              <span class="screen-sub">Funding the opening shot</span>
+              <span class="screen-sub">Tip the menu until the room hits the goal — then someone becomes Director</span>
             </>
           )}
         </div>
 
-        {!state.isLive && (
+        {!state.isLive && state.gameAccepting && (
           <div class="remote-meter">
             <div class="meter-label">
-              <span>{isModel ? 'Opening goal' : 'Opening'}</span>
+              <span>{isModel ? 'Unlock target' : 'Unlock'}</span>
               <span>{Math.round(sessionPercent)}%</span>
             </div>
             <div class="meter-bar">
@@ -194,17 +231,25 @@ export const App = () => {
         )}
 
         {state.isLive && state.director.id && (
-          <div class="remote-chair">
-            <span class="chair-tag">Lead</span>
-            <span class="chair-name">{state.director.name}</span>
-            <span class="chair-power">{state.director.total} tk</span>
+          <div class={`remote-screen remote-screen--director${leadIsYou ? ' remote-screen--director-self' : ''}`}>
+            <span class="screen-label">Now steering</span>
+            <span class="screen-line">
+              <span class="emoji" aria-hidden="true">
+                🎬
+              </span>
+              <span class="screen-director-name">{state.director.name}</span>
+              <span>· {state.director.total} tk</span>
+            </span>
+            {leadIsYou ? (
+              <span class="screen-sub">You spent {selfAllocations.total} tk</span>
+            ) : null}
           </div>
         )}
 
-        {tenureActive && (
+        {tenureActive && !isModel && (
           <div class="remote-meter remote-meter--shield">
             <div class="meter-label">
-              <span>Lead safe</span>
+              <span>Director safe</span>
               <span>{formatRemaining(state.directorTenureLeftMs)}</span>
             </div>
             <div class="meter-bar meter-bar--shield">
@@ -213,43 +258,27 @@ export const App = () => {
           </div>
         )}
 
-        {openChairRace && (
+        {showOpenSeatPanel ? (
           <div class="remote-open-seat">
-            <div class="open-seat-title">Open challenge</div>
-            <p class="open-seat-copy">
-              Lead immunity is off. Overtake <strong>{state.director.name}</strong> by{' '}
-              <strong>{state.overtakeMargin} tk</strong> in session tips to take Director.
-            </p>
-            {!isModel && isGuest && chairFromZero > 0 ? (
-              <div class="open-seat-actions">
-                <p class="guest-banana">
-                  From zero: <strong>{chairFromZero} tk</strong> to lead — sign in to tip.
-                </p>
-                <button type="button" class="bite-btn" onClick={openSignUp}>
-                  Sign in
-                </button>
-              </div>
-            ) : !isModel && !isGuest && !isDirector && biteNeed > 0 ? (
-              <div class="open-seat-actions">
-                <p class="open-seat-you">
-                  You need <strong>{biteNeed} tk</strong> more on your session total.
-                </p>
-                <button
-                  type="button"
-                  class="bite-btn"
-                  disabled={biteBusy}
-                  onClick={() => void sendChairBite()}
-                >
-                  {biteBusy ? '…' : `Take chair · ${biteNeed} tk`}
-                </button>
-              </div>
-            ) : !isModel && isDirector && openChairRace ? (
-              <p class="open-seat-foot">You hold the chair — defend your lead.</p>
-            ) : isModel && openChairRace ? (
-              <p class="open-seat-foot">Immunity off · viewers can flip the lead.</p>
+            {isGuest && chairFromZero > 0 ? (
+              <button type="button" class="bite-btn" onClick={openSignUp}>
+                Sign in · {chairFromZero} tk
+              </button>
+            ) : !isGuest && !isDirector && biteNeed > 0 ? (
+              <button
+                type="button"
+                class="bite-btn bite-btn--cta"
+                disabled={biteBusy}
+                aria-label={`Pay ${biteNeed} tk to become Director`}
+                onClick={() => void sendChairBite()}
+              >
+                  {biteBusy ? '…' : `Become Director · ${biteNeed} tk`}
+              </button>
+            ) : !isGuest && isDirector ? (
+              <p class="open-seat-foot">You have the remote — pick an action below when you&apos;re ready.</p>
             ) : null}
           </div>
-        )}
+        ) : null}
 
         {/* ---------- Control pad (hidden for the model) ---------- */}
         {!isModel && (
@@ -257,8 +286,8 @@ export const App = () => {
           <div class="pad-head">
             {canControl ? (
               <>
-                <span class="pad-title">Control</span>
-                <span class="pad-cost">{state.commandCostTokens} tk / call</span>
+                <span class="pad-title">Actions</span>
+                <span class="pad-cost">{state.commandCostTokens} tk each</span>
               </>
             ) : (
               <>
@@ -266,11 +295,13 @@ export const App = () => {
                   <span class="lock">🔒</span> Locked
                 </span>
                 <span class="pad-cost">
-                  {!state.isLive
-                    ? 'Unlocks when LIVE'
+                  {!state.gameAccepting
+                    ? 'Waiting for broadcaster to start'
+                    : !state.isLive
+                    ? 'Starts when the show goes live'
                     : isModel
-                      ? 'Audience-only control'
-                      : 'Top tipper unlocks'}
+                      ? 'Only viewers use this remote'
+                      : 'Become Director to give orders'}
                 </span>
               </>
             )}
@@ -301,7 +332,7 @@ export const App = () => {
         </div>
         )}
 
-        {state.isLive && state.challenger.id ? (
+        {state.isLive && state.challenger.id && !suppressChallengerMeter ? (
           <div class="remote-meter remote-meter--bottom">
             <div class="meter-label">
               <span>{state.challenger.name}</span>
@@ -327,34 +358,41 @@ const ModelScreen = ({ state }: { state: DirectorPublicState }) => {
   if (!state.isLive) {
     return (
       <>
-        <span class="screen-label">Pre-show · waiting</span>
+        <span class="screen-label">Unlock Director</span>
         <span class="screen-line">
           {state.totalSessionTips}
           <span class="screen-sub">/ {state.preproductionGoal} tk</span>
         </span>
-        <span class="screen-sub">Show opens when viewers fill the goal</span>
+        <span class="screen-sub">Tips below fill the bar — then the room goes live</span>
       </>
     );
   }
   if (!state.director.id) {
     return (
       <>
-        <span class="screen-label">LIVE · no leader</span>
-        <span class="screen-line">Waiting…</span>
+        <span class="screen-label">Live — no Director yet</span>
+        <span class="screen-line">Waiting for someone to take the seat</span>
       </>
     );
   }
+  const tenureLeft = state.directorTenureLeftMs > 0;
+  if (tenureLeft) {
+    return (
+      <>
+        <span class="screen-label">Director safe</span>
+        <span class="screen-line">{formatRemaining(state.directorTenureLeftMs)}</span>
+      </>
+    );
+  }
+  const contestOpen =
+    state.isLive && Boolean(state.director.id) && !state.directorTenureLeftMs;
   return (
     <>
-      <span class="screen-label">LIVE · Director</span>
+      <span class="screen-label">Director remote</span>
       <span class="screen-line">
-        <span>🎬 {state.director.name}</span>
-      </span>
-      <span class="screen-sub">
-        {state.director.total} tk on chair
-        {state.directorTenureLeftMs
-          ? ` · ${formatRemaining(state.directorTenureLeftMs)} safe`
-          : ' · open challenge'}
+        {contestOpen
+          ? 'Viewer can send new orders'
+          : 'Last order still playing'}
       </span>
     </>
   );

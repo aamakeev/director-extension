@@ -9,6 +9,7 @@ export default function resolveSlotPage(slotType, context) {
     case 'EXTENSION_SLOT_MAIN_GAME_FUN':
       return 'mainGameFun';
     case 'EXTENSION_SLOT_RIGHT_OVERLAY':
+      if (isModel) return null;
       return 'rightOverlay';
     case 'EXTENSION_SLOT_BACKGROUND':
       if (isGuest) return null;

@@ -1,12 +1,12 @@
 export type DirectorSettings = {
   /**
-   * Markup (in percent) the Director extension adds on top of every tip menu
-   * item. e.g. with 10%, a 50tk Dance becomes 55tk in Director. The model
+   * Markup (in percent) added on top of every tip menu item for the on-stage
+   * prices. e.g. with 10%, a 50tk Dance becomes 55tk shown to viewers. The model
    * earns the extra tokens in exchange for letting viewers tip partial
    * amounts toward the same item.
    */
   tipMenuMarkupPercent: number;
-  /** Tokens the room must reach before the show unlocks the Director control. */
+  /** Tokens the room must reach before the show goes live and Director control unlocks. */
   preproductionGoal: number;
   overtakeMargin: number;
   minTenureSec: number;
