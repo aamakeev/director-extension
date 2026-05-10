@@ -6,38 +6,50 @@
   padding: 0;
 }
 
+/* No canvas/page background — the host panel shows through. */
 html,
 body,
 #app {
-  min-height: 100%;
-  /* Same canvas in light and dark — host panel no longer shows through. */
-  background: #303133 !important;
-  background-color: #303133 !important;
+  overflow: hidden;
+  background: transparent;
 }
 
+/* Light theme is the safe default — readable on the host's typically-white panel. */
 html,
 body,
 input {
+  color: #1a1a1a;
+}
+
+:root {
+  color-scheme: light;
+  --d-accent: #8c4a17;
+  --d-accent-strong: #8c4a17;
+  --d-danger: #c0354b;
+  /* Card surface tokens — white-ish on the host's grey/cream light backdrop. */
+  --d-card-bg: #ffffff;
+  --d-card-border: rgba(20, 20, 20, 0.12);
+  --d-card-shadow: 0 1px 0 rgba(20, 20, 20, 0.04), 0 2px 8px rgba(20, 20, 20, 0.05);
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --d-accent: #e6a04a;
+  --d-accent-strong: #c97a3a;
+  --d-danger: #ff7a8c;
+  --d-card-bg: rgba(255, 255, 255, 0.04);
+  --d-card-border: rgba(255, 255, 255, 0.12);
+  --d-card-shadow: none;
+}
+
+html[data-theme='dark'],
+html[data-theme='dark'] body,
+html[data-theme='dark'] input {
   color: #f8f8f8;
 }
 
 html[data-theme='light'] {
   color-scheme: light;
-  --d-accent: #8c4a17;
-  --d-accent-strong: #8c4a17;
-  --d-danger: #c0354b;
-}
-
-html[data-theme='light'],
-html[data-theme='light'] body,
-html[data-theme='light'] input {
-  color: #1a1a1a;
-}
-
-:root {
-  --d-accent: #e6a04a;
-  --d-accent-strong: #c97a3a;
-  --d-danger: #ff7a8c;
 }
 
 html {
@@ -64,31 +76,67 @@ input {
   padding: 20px 16px;
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 22px;
   max-width: 640px;
   margin: 0 auto;
-  background: #303133;
+  background: transparent;
+  position: relative;
+}
+
+.settings-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--d-card-border);
+  background: var(--d-card-bg);
+  box-shadow: var(--d-card-shadow);
+}
+
+.settings-brand-name {
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--d-accent);
+}
+
+.settings-brand-tag {
+  margin-left: auto;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.55;
 }
 
 .settings-section {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
-}
-
-.settings-section:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
+  padding: 14px 16px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--d-card-border);
+  background: var(--d-card-bg);
+  box-shadow: var(--d-card-shadow);
 }
 
 .settings-section-head h2 {
-  font-size: 16px;
-  line-height: 22px;
-  font-weight: 700;
-  margin: 0 0 4px;
-  color: inherit;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0 0 2px;
+  color: var(--d-accent);
+}
+
+html[data-theme='light'] .settings-section-head h2 {
+  color: #8c4a17;
 }
 
 .settings-section-head p {
@@ -113,8 +161,22 @@ input {
 
 .settings-fields {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px 16px;
+  align-items: start;
+}
+
+.settings-fields > .field {
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settings-fields .input-wrap input {
+  height: 40px;
+  padding: 0 44px 0 14px;
 }
 
 /* Slot-width aware (not browser viewport) — see AGENTS.md layout rules */
@@ -230,12 +292,22 @@ input {
   gap: 8px;
   padding: 12px 12px 14px;
   border-radius: 16px;
+  /* Light is the safe default; dark gradient is opt-in. */
+  background: linear-gradient(180deg, rgba(250, 249, 247, 0.98) 0%, rgba(230, 228, 224, 0.98) 100%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 8px 24px rgba(0, 0, 0, 0.08);
+  color: #1a1a1a;
+}
+
+html[data-theme='dark'] .deck-remote {
   background: linear-gradient(180deg, rgba(42, 40, 38, 0.96) 0%, rgba(22, 21, 20, 0.96) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #f4f1ea;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 8px 24px rgba(0, 0, 0, 0.35);
-  color: #f4f1ea;
 }
 
 .deck-top {
@@ -246,24 +318,17 @@ input {
 }
 
 .deck-brand {
-  font-family: 'VT323', 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 22px;
-  font-weight: 400;
-  letter-spacing: 0.02em;
-  text-transform: none;
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   line-height: 1;
-  color: #ffc266;
-  text-shadow:
-    0 0 8px rgba(255, 170, 80, 0.55),
-    0 0 18px rgba(230, 120, 40, 0.28),
-    1px 2px 0 rgba(0, 0, 0, 0.75);
+  color: rgba(255, 194, 102, 0.7);
 }
 
 html[data-theme='light'] .deck-brand {
-  color: #9a4a08;
-  text-shadow:
-    0 0 6px rgba(230, 160, 74, 0.3),
-    0 1px 0 rgba(255, 255, 255, 0.35);
+  color: rgba(154, 74, 8, 0.7);
 }
 
 .deck-rec {
@@ -274,6 +339,10 @@ html[data-theme='light'] .deck-brand {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  color: rgba(26, 26, 26, 0.45);
+}
+
+html[data-theme='dark'] .deck-rec {
   color: rgba(244, 241, 234, 0.38);
 }
 
@@ -295,14 +364,23 @@ html[data-theme='light'] .deck-brand {
   border-radius: 10px;
   padding: 8px 10px;
   min-height: 48px;
+  /* Light is the default — soft cream LCD that matches the surrounding white card. */
   background:
-    linear-gradient(180deg, rgba(48, 36, 18, 0.92) 0%, rgba(28, 22, 12, 0.92) 100%);
-  border: 1px solid rgba(255, 170, 80, 0.2);
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.45);
-  color: #ffb86b;
+    linear-gradient(180deg, rgba(255, 250, 240, 0.96) 0%, rgba(245, 234, 216, 0.96) 100%);
+  border: 1px solid rgba(140, 74, 23, 0.2);
+  box-shadow: inset 0 0 8px rgba(140, 74, 23, 0.08);
+  color: #5a3a14;
   display: flex;
   flex-direction: column;
   gap: 3px;
+}
+
+html[data-theme='dark'] .deck-screen {
+  background:
+    linear-gradient(180deg, rgba(48, 36, 18, 0.92) 0%, rgba(28, 22, 12, 0.92) 100%);
+  border-color: rgba(255, 170, 80, 0.2);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.45);
+  color: #ffb86b;
 }
 
 .deck-screen-label {
@@ -310,6 +388,10 @@ html[data-theme='light'] .deck-brand {
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
+  color: rgba(90, 58, 20, 0.62);
+}
+
+html[data-theme='dark'] .deck-screen-label {
   color: rgba(255, 184, 107, 0.55);
 }
 
@@ -377,17 +459,27 @@ html[data-theme='light'] .deck-brand {
   min-height: 56px;
   padding: 10px 8px 11px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background: linear-gradient(180deg, rgba(72, 66, 58, 0.95) 0%, rgba(36, 32, 28, 0.95) 100%);
-  color: #f4f1ea;
+  /* Light default; dark only on opt-in. */
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(235, 233, 228, 0.95) 100%);
+  color: #1a1a1a;
   font-family: inherit;
   font-size: 13px;
   font-weight: 700;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.06);
   cursor: default;
   opacity: 1;
+}
+
+html[data-theme='dark'] .deck-key {
+  border-color: rgba(255, 255, 255, 0.07);
+  background: linear-gradient(180deg, rgba(72, 66, 58, 0.95) 0%, rgba(36, 32, 28, 0.95) 100%);
+  color: #f4f1ea;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
 }
 
 .deck-key--cool {
@@ -404,7 +496,7 @@ html[data-theme='light'] .deck-brand {
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.01em;
-  color: rgba(244, 241, 234, 0.9);
+  color: rgba(26, 26, 26, 0.82);
   text-align: center;
   line-height: 1.2;
   max-width: 100%;
@@ -424,14 +516,23 @@ html[data-theme='light'] .deck-brand {
 
 .race-preview {
   margin: 0 auto 14px;
-  padding: 12px 12px 14px;
+  padding: 14px 16px 16px;
   border-radius: 14px;
   border: 1px solid rgba(127, 127, 127, 0.22);
-  background: rgba(127, 127, 127, 0.05);
+  background: transparent;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 360px;
+  width: 100%;
+  max-width: min(100%, 480px);
+}
+
+.race-card {
+  padding: 10px 12px;
+}
+
+.race-name {
+  word-break: break-word;
 }
 
 .race-row {
@@ -545,24 +646,8 @@ html[data-theme='light'] .deck-brand {
   text-align: right;
 }
 
-html[data-theme='light'] .deck-remote {
-  background: linear-gradient(180deg, rgba(250, 249, 247, 0.98) 0%, rgba(230, 228, 224, 0.98) 100%);
-  border-color: rgba(0, 0, 0, 0.08);
-  color: #1a1a1a;
-}
-
-html[data-theme='light'] .deck-rec {
-  color: rgba(26, 26, 26, 0.45);
-}
-
-html[data-theme='light'] .deck-key {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(235, 233, 228, 0.95) 100%);
-  color: #1a1a1a;
-  border-color: rgba(0, 0, 0, 0.08);
-}
-
-html[data-theme='light'] .deck-key-label {
-  color: rgba(26, 26, 26, 0.82);
+html[data-theme='dark'] .deck-key-label {
+  color: rgba(244, 241, 234, 0.9);
 }
 
 /* ---------- callout (relative percentage line) ---------- */
