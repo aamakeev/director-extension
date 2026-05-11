@@ -59,10 +59,10 @@ buildPage({
 });
 
 buildPage({
-  fileName: 'rightOverlay.html',
-  title: 'Director · rightOverlay (standalone)',
+  fileName: 'videoDecorativeOverlay.html',
+  title: 'Director · videoDecorativeOverlay (standalone)',
   bodyLines: ['  <div id="app"></div>'],
-  cssFiles: ['src/slots/rightOverlay/main.css'],
+  cssFiles: ['src/slots/videoDecorativeOverlay/main.css'],
 });
 
 /* settings: merge root inline snippet + bundled settings CSS */

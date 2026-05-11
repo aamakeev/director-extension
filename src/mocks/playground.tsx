@@ -2,22 +2,24 @@ import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import type { TV1ExtUser } from '@stripchatdev/ext-helper';
 
 import { App as MainApp } from '../slots/mainGameFun/app';
-import { App as OverlayApp } from '../slots/rightOverlay/app';
+import { App as OverlayApp } from '../slots/videoDecorativeOverlay/app';
 import { App as SettingsApp } from '../slots/settings/app';
 
+import { COMMAND_BY_ID, COMMAND_GROUPS } from '../shared/commands';
 import { whisperSelfId } from '../shared/role';
+import type { DirectorActivityKind } from '../shared/state';
 
 import { mockBus } from './extHelperMock';
 import { getSdkTipMenuForScenario, SCENARIOS, type Scenario } from './scenarios';
 
 import '../slots/mainGameFun/main.css';
-import '../slots/rightOverlay/main.css';
+import '../slots/videoDecorativeOverlay/main.css';
 import '../slots/settings/main.css';
 import './playground.css';
 
 type Role = 'guest' | 'viewer' | 'director' | 'model';
 type Theme = 'dark' | 'light';
-type Slot = 'tab' | 'overlay' | 'settings';
+type Slot = 'tab' | 'overlay' | 'settings' | 'stream';
 type RoleAvailability = Record<Role, { enabled: boolean; reason?: string }>;
 
 const SELF_USER = {
@@ -58,6 +60,31 @@ const pickFallbackRole = (availability: RoleAvailability): Role => {
 };
 
 let toastSeq = 1;
+let activitySeq = 1;
+
+const DURATION_BY_KIND: Record<DirectorActivityKind, number> = {
+  menu_goal_complete: 8_000,
+  control_unlock: 35_000,
+  command_start: 20_000,
+  game_started: 6_000,
+  game_paused: 6_000,
+  tip_received: 3_000,
+  chair_chase_takeover: 8_000,
+};
+
+const emitActivity = (
+  kind: DirectorActivityKind,
+  extra: Record<string, unknown> = {},
+) => {
+  mockBus.emit('v1.ext.whispered', {
+    type: 'director.activity',
+    id: `mock_act_${activitySeq++}_${Date.now()}`,
+    at: Date.now(),
+    kind,
+    durationMs: DURATION_BY_KIND[kind],
+    ...extra,
+  });
+};
 
 export const Playground = () => {
   const [scenarioId, setScenarioId] = useState<string>(SCENARIOS[0]!.id);
@@ -77,9 +104,10 @@ export const Playground = () => {
     setRole(pickFallbackRole(roleAvailability));
   }, [role, roleAvailability]);
 
-  useEffect(() => {
-    if (role === 'model' && slot === 'overlay') setSlot('tab');
-  }, [role, slot]);
+  // Note: the model used to be blocked from the overlay slot. The
+  // videoDecorativeOverlay now renders a dedicated ModelHeroOverlay when the
+  // current user is the broadcaster, so the model preview is intentionally
+  // allowed.
 
   // Apply theme to <html>.
   useEffect(() => {
@@ -202,6 +230,33 @@ export const Playground = () => {
         tone: 'success',
         message: `[mock] spent ${p.tokensAmount} tk`,
       });
+
+      // Stand in for the model background: convert the spend into the activity
+      // broadcast that the videoDecorativeOverlay listens for, so pressing pad
+      // keys / tipping menu lines / chair-chasing produces a visible badge.
+      const kind = String(p.tokensSpendData.kind ?? '');
+      const username = String(p.tokensSpendData.username ?? (SELF_USER[role] as { username?: string })?.username ?? 'viewer');
+      if (kind === 'director.command.issue') {
+        const commandId = String(p.tokensSpendData.commandId ?? '');
+        const cmd = COMMAND_BY_ID[commandId];
+        emitActivity('command_start', {
+          commandId,
+          label: cmd?.label,
+          emoji: cmd?.emoji,
+          issuedByName: username,
+        });
+      } else if (kind === 'director.menu.tip') {
+        const itemId = String(p.tokensSpendData.itemId ?? '');
+        const goal = scenario.state.menuGoals.find((g) => g.id === itemId);
+        emitActivity('tip_received', {
+          itemId,
+          itemTitle: goal?.title,
+          price: goal?.price,
+          issuedByName: username,
+        });
+      } else if (kind === 'director.chair.chase') {
+        emitActivity('chair_chase_takeover', { issuedByName: username });
+      }
       return undefined;
     });
   }, [role, scenario, scenarioId, broadcastActive]);
@@ -217,6 +272,62 @@ export const Playground = () => {
       targetUserId: selfWhisperTarget(role),
       tone: 'success',
       message: `Toast #${toastSeq++}`,
+    });
+  };
+
+  const fireMenuGoalComplete = () => {
+    const goal = scenario.state.menuGoals[0];
+    if (!goal) {
+      mockBus.emit('v1.ext.whispered', {
+        type: 'director.toast',
+        targetUserId: selfWhisperTarget(role),
+        tone: 'warn',
+        message: '[mock] No menu goals in this scenario',
+      });
+      return;
+    }
+    emitActivity('menu_goal_complete', {
+      itemId: goal.id,
+      itemTitle: goal.title,
+      price: goal.price,
+      contributors: [
+        { userId: 'u1', name: 'rose_taker', amount: Math.ceil(goal.price * 0.6) },
+        { userId: 'u2', name: 'velvet_42', amount: Math.floor(goal.price * 0.4) },
+      ],
+    });
+  };
+
+  const fireCommandStart = () => {
+    const cmd = COMMAND_GROUPS[0]?.commands[0];
+    if (!cmd) return;
+    emitActivity('command_start', {
+      commandId: cmd.id,
+      label: cmd.label,
+      emoji: cmd.emoji,
+      issuedByName: (SELF_USER[role] as { username?: string })?.username ?? 'rose_taker',
+    });
+  };
+
+  const fireChairTakeover = () => {
+    emitActivity('chair_chase_takeover', {
+      issuedByName: (SELF_USER[role] as { username?: string })?.username ?? 'velvet_42',
+    });
+  };
+
+  const fireTipReceived = () => {
+    const goal = scenario.state.menuGoals[0];
+    emitActivity('tip_received', {
+      itemId: goal?.id,
+      itemTitle: goal?.title,
+      price: goal?.price,
+      issuedByName: (SELF_USER[role] as { username?: string })?.username ?? 'viewer',
+    });
+  };
+
+  const fireControlUnlock = () => {
+    emitActivity('control_unlock', {
+      directorName: 'rose_taker',
+      preproductionGoal: scenario.state.preproductionGoal,
     });
   };
 
@@ -257,14 +368,20 @@ export const Playground = () => {
         <section>
           <div class="pg-label">Slot</div>
           <div class="pg-row">
-            {(['tab', 'overlay', 'settings'] as Slot[]).map((s) => (
+            {(['tab', 'stream', 'overlay', 'settings'] as Slot[]).map((s) => (
               <button
                 type="button"
                 key={s}
                 class={`pg-pill${slot === s ? ' is-on' : ''}`}
                 onClick={() => setSlot(s)}
               >
-                {s === 'tab' ? 'Tab' : s === 'overlay' ? 'Right overlay' : 'Settings'}
+                {s === 'tab'
+                  ? 'Tab'
+                  : s === 'overlay'
+                    ? 'Decorative overlay'
+                    : s === 'stream'
+                      ? 'Stream'
+                      : 'Settings'}
               </button>
             ))}
           </div>
@@ -330,7 +447,7 @@ export const Playground = () => {
           </div>
         </section>
 
-        {slot === 'overlay' && (
+        {(slot === 'overlay' || slot === 'stream') && (
           <section>
             <div class="pg-label">Overlay backdrop</div>
             <div class="pg-row">
@@ -366,6 +483,51 @@ export const Playground = () => {
           </div>
         </section>
 
+        <section>
+          <div class="pg-label">Stream notifications</div>
+          <div class="pg-col">
+            <button class="pg-row-btn" onClick={fireControlUnlock}>
+              <span class="pg-row-btn-title">🔓 Control unlocked</span>
+              <span class="pg-row-btn-sub">
+                {role === 'model'
+                  ? 'Hero overlay — green accent'
+                  : 'Compact notice · green accent'}
+              </span>
+            </button>
+            <button class="pg-row-btn" onClick={fireCommandStart}>
+              <span class="pg-row-btn-title">🎬 Director command</span>
+              <span class="pg-row-btn-sub">
+                {role === 'model'
+                  ? 'Hero overlay with countdown · yellow accent'
+                  : 'Compact notice · yellow accent'}
+              </span>
+            </button>
+            <button class="pg-row-btn" onClick={fireMenuGoalComplete}>
+              <span class="pg-row-btn-title">✓ Menu goal complete</span>
+              <span class="pg-row-btn-sub">
+                {role === 'model'
+                  ? 'Hero overlay with countdown · green accent'
+                  : 'Compact notice · green accent'}
+              </span>
+            </button>
+            <button class="pg-row-btn" onClick={fireTipReceived}>
+              <span class="pg-row-btn-title">💸 Tip received</span>
+              <span class="pg-row-btn-sub">Compact notice · amber accent (no hero)</span>
+            </button>
+            <button class="pg-row-btn" onClick={fireChairTakeover}>
+              <span class="pg-row-btn-title">🪑 Chair takeover</span>
+              <span class="pg-row-btn-sub">Compact notice · coral accent (no hero)</span>
+            </button>
+          </div>
+          {slot === 'overlay' && (
+            <div class="pg-tip">
+              {role === 'model'
+                ? 'Model sees a hero overlay for milestone events (control unlocked, command, menu goal — last two with a countdown). Tips and chair takeovers stay as the compact corner notice so they don\'t interrupt the show.'
+                : 'Viewers see the compact pill in the top-right corner for every event. Accent color varies per kind.'}
+            </div>
+          )}
+        </section>
+
         <p class="pg-tip">
           "Send tip" / commands / save will fire mock requests and surface confirmation toasts.
         </p>
@@ -377,6 +539,14 @@ export const Playground = () => {
             {slot === 'tab' && <MainApp />}
             {slot === 'overlay' && <OverlayApp />}
             {slot === 'settings' && <SettingsApp key={scenarioId} />}
+            {slot === 'stream' && (
+              <div class="pg-stream-frame">
+                <div class={`pg-stream-overlay pg-stream-overlay--bg-${overlayBg}`}>
+                  <OverlayApp />
+                </div>
+                <div class="pg-stream-tab"><MainApp /></div>
+              </div>
+            )}
           </div>
         </div>
       </main>

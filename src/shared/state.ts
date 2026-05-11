@@ -70,7 +70,14 @@ export type DirectorActivity = {
 };
 
 /** Lightweight cross-slot activity (also sent over whisper + whisper.local). */
-export type DirectorActivityKind = 'menu_goal_complete' | 'control_unlock' | 'command_start';
+export type DirectorActivityKind =
+  | 'menu_goal_complete'
+  | 'control_unlock'
+  | 'command_start'
+  | 'game_started'
+  | 'game_paused'
+  | 'tip_received'
+  | 'chair_chase_takeover';
 
 export type DirectorActivityBroadcast = {
   type: 'director.activity';
@@ -79,7 +86,10 @@ export type DirectorActivityBroadcast = {
   kind: DirectorActivityKind;
   itemId?: string;
   itemTitle?: string;
+  /** Menu line price (`menu_goal_complete`, `tip_received`). */
   price?: number;
+  /** Tokens tipped on this specific event (set on `tip_received` and `chair_chase_takeover`). */
+  amount?: number;
   /** Present when `kind === 'menu_goal_complete'`: who funded this line. */
   contributors?: DirectorMenuContributor[];
   commandId?: string;
@@ -88,6 +98,8 @@ export type DirectorActivityBroadcast = {
   issuedByName?: string;
   directorName?: string;
   preproductionGoal?: number;
+  /** How long the model-side overlay badge stays visible for this activity (ms). */
+  durationMs?: number;
 };
 
 export type DirectorPublicState = {
@@ -112,11 +124,28 @@ export type DirectorPublicState = {
   commandCooldowns: Record<string, number>;
   flashAt: number;
   activityFeed: DirectorActivity[];
+  /** Top room contributors toward the session unlock goal, sorted desc by total. */
+  sessionContributors?: Array<{ id: string; name: string; total: number }>;
+  /**
+   * Small ring of recent broadcast activities so a freshly-mounted viewer
+   * iframe (decorative overlay only mounts when the model has reserved the
+   * host activity slot) can backfill its inbox without waiting for the next
+   * event.
+   */
+  recentActivities?: DirectorActivityBroadcast[];
   updatedAt: number;
 };
 
 export type WhisperEnvelope =
   | DirectorPublicState
+  | {
+      type: 'director.chat.message';
+      message: string;
+      userId?: string;
+      username?: string;
+      /** When true, the receiver should render the line without an author (system notice). */
+      anonymous?: boolean;
+    }
   | {
       type: 'director.menu.tip';
       paymentData: TV1PaymentData;

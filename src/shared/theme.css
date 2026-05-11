@@ -7,49 +7,46 @@
 }
 
 html[data-theme='dark'] {
-  --bg-base: #060912;
-  --bg-elevated: rgba(14, 19, 33, 0.92);
-  --bg-soft: rgba(20, 26, 44, 0.65);
-  --bg-radial-1: rgba(76, 117, 182, 0.32);
-  --bg-radial-2: rgba(149, 45, 84, 0.28);
-  --line: rgba(163, 211, 255, 0.18);
-  --line-strong: rgba(163, 211, 255, 0.32);
-  --text: #f1f6ff;
-  --text-muted: rgba(228, 238, 255, 0.66);
-  --text-dim: rgba(228, 238, 255, 0.42);
+  --bg-base: #100c08;
+  --bg-elevated: rgba(28, 22, 17, 0.92);
+  --bg-soft: rgba(36, 28, 22, 0.65);
+  --bg-radial-1: rgba(201, 122, 58, 0.26);
+  --bg-radial-2: rgba(176, 64, 92, 0.22);
+  --line: rgba(255, 224, 188, 0.14);
+  --line-strong: rgba(255, 224, 188, 0.26);
+  --text: #f6efe4;
+  --text-muted: rgba(246, 239, 228, 0.66);
+  --text-dim: rgba(246, 239, 228, 0.42);
   --accent-amber: #ffce6a;
   --accent-amber-soft: rgba(255, 206, 106, 0.18);
   --accent-coral: #ff8a6b;
   --accent-mint: #6ce5c8;
-  --accent-blue: #7fb1ff;
   --danger: #ff5d75;
   --warning: #ffb45a;
   --shadow-card: 0 12px 36px rgba(0, 0, 0, 0.45);
 }
 
 html[data-theme='light'] {
-  --bg-base: #f4f6fb;
-  --bg-elevated: rgba(255, 255, 255, 0.92);
-  --bg-soft: rgba(247, 249, 254, 0.85);
-  --bg-radial-1: rgba(120, 167, 255, 0.22);
-  --bg-radial-2: rgba(255, 138, 107, 0.18);
-  --line: rgba(20, 30, 60, 0.08);
-  --line-strong: rgba(20, 30, 60, 0.16);
-  --text: #131a2c;
-  --text-muted: rgba(19, 26, 44, 0.66);
-  --text-dim: rgba(19, 26, 44, 0.42);
+  --bg-base: #f7f4ee;
+  --bg-elevated: rgba(255, 253, 249, 0.94);
+  --bg-soft: rgba(252, 248, 240, 0.86);
+  --bg-radial-1: rgba(217, 122, 22, 0.16);
+  --bg-radial-2: rgba(214, 90, 58, 0.14);
+  --line: rgba(60, 40, 20, 0.08);
+  --line-strong: rgba(60, 40, 20, 0.18);
+  --text: #1f1a14;
+  --text-muted: rgba(31, 26, 20, 0.66);
+  --text-dim: rgba(31, 26, 20, 0.42);
   --accent-amber: #d97a16;
   --accent-amber-soft: rgba(217, 122, 22, 0.14);
   --accent-coral: #d65a3a;
   --accent-mint: #11876a;
-  --accent-blue: #2057c6;
   --danger: #d6354c;
   --warning: #b8721d;
-  --shadow-card: 0 8px 22px rgba(20, 30, 60, 0.08);
+  --shadow-card: 0 8px 22px rgba(60, 40, 20, 0.08);
 }
 
 html {
-  height: 100%;
   background:
     radial-gradient(120% 100% at 8% 0%, var(--bg-radial-1), transparent 60%),
     radial-gradient(120% 100% at 95% 100%, var(--bg-radial-2), transparent 58%),
@@ -62,11 +59,9 @@ html {
 }
 
 body {
-  min-height: 100%;
 }
 
 #app {
-  min-height: 100%;
   display: block;
 }
 

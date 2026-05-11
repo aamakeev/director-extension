@@ -1,6 +1,7 @@
 import type {
   TEvents,
   TV1ExtContext,
+  TV1ExtUser,
   TV1PaymentData,
   TV1TipMenu,
 } from '@stripchatdev/ext-helper';
@@ -34,9 +35,17 @@ import {
   claimHostActivityForEvent,
   clearHostActivity,
   createHostActivitySlot,
+  durationMsForDirectorActivity,
   releaseCommandHostActivity,
   type HostActivitySlot,
 } from '../../shared/hostExtensionActivity';
+import { drainMoves } from '../../shared/movesStorage';
+import {
+  clearGameState,
+  loadGameState,
+  saveGameState,
+  type PersistedGameState,
+} from '../../shared/gameStorage';
 
 const TICK_MS = 1000;
 const HEARTBEAT_MS = 7_000;
@@ -56,7 +65,11 @@ type ModelGameState = {
   commandCooldowns: Record<string, number>;
   flashAt: number;
   activityFeed: DirectorActivity[];
+  /** Recent broadcast activities so newly-mounted decorative iframes can backfill. */
+  recentActivities: DirectorActivityBroadcast[];
   seenTransactions: Set<string>;
+  seenMoveTxnIds: Set<string>;
+  drainingMoves: boolean;
 };
 
 const createInitialState = (): ModelGameState => ({
@@ -74,7 +87,10 @@ const createInitialState = (): ModelGameState => ({
   commandCooldowns: {},
   flashAt: 0,
   activityFeed: [],
+  recentActivities: [],
   seenTransactions: new Set(),
+  seenMoveTxnIds: new Set(),
+  drainingMoves: false,
 });
 
 export const startModelBackground = (): (() => void) => {
@@ -93,19 +109,105 @@ export const startModelBackground = (): (() => void) => {
       .catch(() => undefined);
   };
 
-  /** Public room chat via SDK (`v1.chat.message.send` — extension message, not chatbot). */
-  const sendPublicChat = (message: string) => {
+  /**
+   * Public room chat via SDK (`v1.chat.message.send`).
+   * Docs: https://extensions.udi.stripchat.dev/docs/api/requests#v1-chat-message-send
+   * For tipper-attributable messages, pass `user` so the host renders the tipper's
+   * username/avatar; otherwise the model's `context.user` authors the message.
+   */
+  const asAttributedUser = (actor: { userId: string; username: string } | null): TV1ExtUser | null => {
+    if (!actor) return null;
+    const idNum = Number(actor.userId);
+    if (!Number.isFinite(idNum) || idNum <= 0) return null;
+    return {
+      isGuest: false,
+      id: idNum,
+      username: actor.username || 'viewer',
+      status: 'public',
+      hasTokens: true,
+      hasPaidBefore: true,
+      hasUltimateSubscription: false,
+      isModel: false,
+    } as unknown as TV1ExtUser;
+  };
+
+  const resolveChatActor = (
+    actor: { userId: string; username: string } | null | undefined,
+  ): { userId: string; username: string } | null => {
+    if (actor) return actor;
+    if (context.user && !context.user.isGuest) {
+      return {
+        userId: String(context.user.id),
+        username: context.user.username,
+      };
+    }
+    return null;
+  };
+
+  const sendPublicChat = (
+    message: string,
+    actor?: { userId: string; username: string } | null,
+    options?: { anonymous?: boolean },
+  ) => {
     const text = message.trim().slice(0, 2000);
     if (!text) return;
+    const anonymous = options?.anonymous === true;
+    const resolvedActor = anonymous ? null : resolveChatActor(actor);
     void ext
       .makeRequest('v1.chat.message.send', {
         message: text,
-        isAnonymous: false,
-        user: context.user ?? null,
+        isAnonymous: anonymous,
+        user: anonymous ? null : asAttributedUser(resolvedActor),
       })
       .catch((err: unknown) =>
         reportError('director v1.chat.message.send failed', { err: String(err) }),
       );
+
+    safeBroadcast({
+      type: 'director.chat.message',
+      message: text,
+      userId: resolvedActor?.userId,
+      username: resolvedActor?.username,
+      anonymous,
+    });
+  };
+
+  /**
+   * Tip-attributable public chat. Same transport as `sendPublicChat`, but we
+   * pass an explicit actor so the host renders that viewer as the speaker
+   * (avoids the model's name prefixing system-y notices).
+   * `v1.chatbot.message.send` is reserved for the chatbot extension category
+   * and is not available here, so we stick to `v1.chat.message.send`.
+   */
+  const sendSystemChat = (
+    message: string,
+    actor?: { userId: string; username: string } | null,
+  ) => sendPublicChat(message, actor ?? null);
+
+  /** Anonymous room notice — no author label on the chat line. */
+  const sendAnonymousChat = (message: string) =>
+    sendPublicChat(message, null, { anonymous: true });
+
+  /**
+   * Send a single chat line built from atoms. Atoms are concatenated with a
+   * single space; Stripchat's chat renderer wraps the result by whitespace
+   * so each atom ends up on its own row in narrow chat layouts. We rely on
+   * natural wrapping rather than forced newlines.
+   */
+  const sendChatAtoms = (
+    atoms: string[],
+    actor?: { userId: string; username: string } | null,
+  ) => {
+    const text = atoms
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .join(' ');
+    if (!text) return;
+    if (actor) {
+      sendSystemChat(text, actor);
+    } else {
+      sendAnonymousChat(text);
+    }
   };
 
   const safeBroadcast = (data: WhisperEnvelope) => {
@@ -116,27 +218,53 @@ export const startModelBackground = (): (() => void) => {
 
   /** Room whisper + local whisper + SDK host activity (`v1.ext.activity.*`). */
   const relayActivity = (payload: DirectorActivityBroadcast) => {
+    // Stamp the per-kind display duration once on the envelope so every consumer
+    // (chiefly the model's right-overlay activity badge) renders a consistent timer.
+    const enriched: DirectorActivityBroadcast =
+      payload.durationMs !== undefined
+        ? payload
+        : {
+            ...payload,
+            durationMs: durationMsForDirectorActivity(
+              payload.kind,
+              settings.commandDurationSec,
+            ),
+          };
+    // Keep a small backfill buffer so viewers whose decorative iframe was not
+    // mounted when this event broadcasted can pick it up on their next state
+    // sync (see `buildPublicState`).
+    state.recentActivities = [enriched, ...state.recentActivities]
+      .filter((a, i, arr) => arr.findIndex((b) => b.id === a.id) === i)
+      .slice(0, 12);
     void ext
-      .makeRequest('v1.ext.whisper', { data: payload as Record<string, unknown> })
+      .makeRequest('v1.ext.whisper', { data: enriched as Record<string, unknown> })
       .catch((err: unknown) =>
         reportError('director activity whisper (room) failed', { err: String(err) }),
       );
     void ext
-      .makeRequest('v1.ext.whisper.local', { data: payload as Record<string, unknown> })
+      .makeRequest('v1.ext.whisper.local', { data: enriched as Record<string, unknown> })
       .catch((err: unknown) =>
         reportError('director activity whisper.local failed', { err: String(err) }),
       );
+    // Re-broadcast after the host-activity slot has been granted so the freshly
+    // mounted decorative-overlay iframe (which didn't exist when the first whisper
+    // fired) actually receives the event. Existing iframes dedupe by activity `id`.
     void claimHostActivityForEvent(
       ext,
       hostActivitySlot,
-      payload.kind,
+      enriched.kind,
       settings.commandDurationSec,
       reportError,
-    );
+    ).then(() => {
+      setTimeout(() => {
+        void ext
+          .makeRequest('v1.ext.whisper', { data: enriched as Record<string, unknown> })
+          .catch((err: unknown) =>
+            reportError('director activity whisper (replay) failed', { err: String(err) }),
+          );
+      }, 800);
+    });
   };
-
-  /** Tip-menu lines that already fired `menu_goal_complete` this show. */
-  let menuGoalsCompleted = new Set<string>();
 
   const appendActivity = (text: string, tone: DirectorActivity['tone'] = 'info') => {
     state.activityFeed.unshift({
@@ -189,18 +317,28 @@ export const startModelBackground = (): (() => void) => {
       startedAt: Date.now(),
     };
     state.flashAt = Date.now();
+    const actor = { userId: user.id, username: user.name };
     if (reason === 'liveStart') {
       appendActivity(`We're LIVE — Director: ${user.name}`, 'spotlight');
-      sendPublicChat(
-        `We're LIVE! Tip goal met — ${user.name} is Director and calls the shots.`,
-      );
+      // Chat lines are emitted by the caller AFTER the tip chat so the order
+      // reads naturally: tip → unlock notice → new Director.
     } else if (reason === 'overtake') {
       appendActivity(`New Director: ${user.name}`, 'spotlight');
-      sendPublicChat(`${user.name} is now Director.`);
+      sendChatAtoms(['took', 'the', '{#accent}Director seat{/accent}'], actor);
     }
   };
 
-  const syncLeadership = (triggerUserId: string | null) => {
+  const syncLeadership = (
+    triggerUserId: string | null,
+    /**
+     * Caller knows the same input event will already produce a stronger /
+     * more specific overlay banner (e.g. `menu_goal_complete` when the
+     * triggering tip also closed a menu line). Setting this skips the
+     * generic `control_unlock` banner so viewers don't see two stacked
+     * announcements about the same moment.
+     */
+    suppressUnlockActivity = false,
+  ) => {
     const sorted = sortedUsers();
 
     if (
@@ -212,14 +350,16 @@ export const startModelBackground = (): (() => void) => {
       state.isLive = true;
       const trigger = triggerUserId ? state.users[triggerUserId] ?? null : null;
       promoteToDirector(trigger ?? sorted[0]!, 'liveStart');
-      relayActivity({
-        type: 'director.activity',
-        id: `live_${Date.now()}`,
-        at: Date.now(),
-        kind: 'control_unlock',
-        directorName: state.director.name,
-        preproductionGoal: settings.preproductionGoal,
-      });
+      if (!suppressUnlockActivity) {
+        relayActivity({
+          type: 'director.activity',
+          id: `live_${Date.now()}`,
+          at: Date.now(),
+          kind: 'control_unlock',
+          directorName: state.director.name,
+          preproductionGoal: settings.preproductionGoal,
+        });
+      }
     }
 
     if (!state.isLive) {
@@ -306,19 +446,20 @@ export const startModelBackground = (): (() => void) => {
         const percent = item.price > 0 ? Math.min(100, (progress / item.price) * 100) : 0;
         const contributors = contributorsForItem(item.id);
         return { ...item, progress, tokensLeft, percent, contributors };
-      })
-      .sort((a, b) => {
-        if (a.tokensLeft !== b.tokensLeft) return a.tokensLeft - b.tokensLeft;
-        if (a.price !== b.price) return a.price - b.price;
-        return a.title.localeCompare(b.title);
       });
+  };
+
+  const clearItemAllocations = (itemId: string) => {
+    Object.values(state.users).forEach((user) => {
+      if (user.allocations[itemId]) {
+        delete user.allocations[itemId];
+      }
+    });
   };
 
   const checkMenuGoalCompletions = () => {
     for (const g of deriveGoals()) {
       if (g.price <= 0 || g.progress < g.price) continue;
-      if (menuGoalsCompleted.has(g.id)) continue;
-      menuGoalsCompleted.add(g.id);
       const contributors = g.contributors.length ? g.contributors : contributorsForItem(g.id);
       const names = contributors.map((c) => c.name).join(', ');
       const n = contributors.length;
@@ -339,17 +480,24 @@ export const startModelBackground = (): (() => void) => {
         price: g.price,
         contributors,
       });
-      const detail =
-        n === 0
-          ? 'Room funded this tip menu line.'
-          : n === 1
-            ? `${contributors[0]!.name} contributed ${contributors[0]!.amount} tk.`
-            : `${n} viewers contributed (${contributors
-                .map((c) => `${c.name} ${c.amount} tk`)
-                .join(', ')}).`;
-      sendPublicChat(
-        `Stage — room filled "${g.title}" (${g.price} tk). ${detail} Thank you for "${g.title}".`,
-      );
+      // Two distinct chat lines depending on who paid for the line:
+      //   - exactly one tipper paid the whole price → attribute to them
+      //     ("CurveyZeal | bought 'Cum'") so it reads as their solo purchase.
+      //   - multiple tippers chipped in → anonymous "Room filled 'Cum'"
+      //     notice, so no single contributor gets the credit.
+      const soloBuyer =
+        contributors.length === 1 && contributors[0]!.amount >= g.price
+          ? contributors[0]!
+          : null;
+      if (soloBuyer) {
+        sendChatAtoms(['bought', `{#accent}"${g.title}"{/accent}`], {
+          userId: soloBuyer.userId,
+          username: soloBuyer.name,
+        });
+      } else {
+        sendChatAtoms(['Room', 'filled', `{#accent}"${g.title}"{/accent}`]);
+      }
+      clearItemAllocations(g.id);
     }
   };
 
@@ -426,12 +574,47 @@ export const startModelBackground = (): (() => void) => {
       commandCooldowns: cooldownMap(),
       flashAt: state.flashAt,
       activityFeed: state.activityFeed.slice(0, 12),
+      sessionContributors: Object.values(state.users)
+        .filter((u) => u.total > 0)
+        .map((u) => ({ id: u.id, name: u.name, total: u.total }))
+        .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
+        .slice(0, 16),
+      // Trim to events whose display duration hasn't expired yet so viewers
+      // who just mounted only get current-relevant activities.
+      recentActivities: state.recentActivities.filter(
+        (a) => a.at + (a.durationMs ?? 6_000) > now,
+      ),
       updatedAt: now,
     };
   };
 
   const broadcastState = () => {
     safeBroadcast(buildPublicState());
+    schedulePersist();
+  };
+
+  let persistTimer: ReturnType<typeof setTimeout> | null = null;
+  const schedulePersist = () => {
+    if (persistTimer) return; // already scheduled
+    persistTimer = setTimeout(() => {
+      persistTimer = null;
+      const users: PersistedGameState['users'] = Object.values(state.users).map((u) => ({
+        id: u.id,
+        name: u.name,
+        total: u.total,
+        allocations: { ...u.allocations },
+      }));
+      void saveGameState(ext, {
+        version: 1,
+        gameAccepting: state.gameAccepting,
+        isLive: state.isLive,
+        totalSessionTips: state.totalSessionTips,
+        director: { ...state.director },
+        challenger: { ...state.challenger },
+        users,
+        savedAt: Date.now(),
+      });
+    }, 2000); // debounce 2s so we don't spam storage on every tick
   };
 
   const sendSelfAllocations = (userId: string) => {
@@ -490,141 +673,403 @@ export const startModelBackground = (): (() => void) => {
     }
   };
 
-  const handleMenuTip = (envelope: Extract<WhisperEnvelope, { type: 'director.menu.tip' }>) => {
-    const payment = validatePayment(envelope.paymentData, envelope.amount, envelope.userId);
-    if (!payment) return;
+  /**
+   * Apply a fully-validated tip to a menu line. Shared between:
+   *   - the extension's own UI flow (`director.menu.tip` whisper after a
+   *     successful `v1.payment.tokens.spend`), and
+   *   - native room tips on the same menu position that we observe via
+   *     `v1.tokens.spent` (Stripchat tip menu / chat tip).
+   *
+   * `source === 'extension'` keeps the original UX (toast back to the spender,
+   * extension-authored chat lines, allocations sync). `source === 'native'`
+   * suppresses chat lines (the host already prints the native tip in chat) and
+   * the per-spender toast (the native tipper isn't viewing through our UI).
+   * Either way the room sees `tip_received` / `menu_goal_complete` overlays
+   * and the model's panel feed updates.
+   */
+  const applyMenuLineTip = (params: {
+    userId: string;
+    username: string;
+    item: DirectorMenuItem;
+    amount: number;
+    /** Unique key for the activity id and the in-memory dedupe set. */
+    tipKey: string;
+    source: 'extension' | 'native';
+  }): boolean => {
+    const { item, source } = params;
+    const amount = Math.max(0, Math.floor(params.amount));
+    if (!amount) return false;
 
-    const user = ensureUser(envelope.userId, envelope.username);
-    if (!user) return;
+    if (state.seenTransactions.has(params.tipKey)) return false;
 
-    const item = state.menu.find((m) => m.id === envelope.itemId) ?? state.menu[0];
-    if (!item) {
-      sendToast(user.id, 'warn', 'No tip menu items available right now');
-      return;
-    }
+    const user = ensureUser(params.userId, params.username);
+    if (!user) return false;
 
-    const amount = Math.max(0, Math.floor(envelope.amount));
-    if (!amount) return;
-
-    markTransaction(payment.transactionId);
+    markTransaction(params.tipKey);
 
     user.total += amount;
     user.allocations[item.id] = (user.allocations[item.id] ?? 0) + amount;
     state.totalSessionTips += amount;
 
-    syncLeadership(user.id);
-    appendActivity(`${user.name} +${amount}tk → "${item.title}"`, 'success');
-    sendToast(user.id, 'success', `Counted: ${amount}tk → "${item.title}"`);
+    // Look at the line BEFORE leadership runs — if this tip closes the line
+    // we'll let `menu_goal_complete` be the single overlay event for the
+    // moment and tell `syncLeadership` to skip the generic `control_unlock`
+    // banner that would otherwise stack on top of it.
+    const itemTotal = Object.values(state.users).reduce(
+      (sum, u) => sum + clampInt(u.allocations?.[item.id], 0),
+      0,
+    );
+    const itemLeft = Math.max(0, item.price - itemTotal);
+    const tipClosedLine = itemLeft === 0;
+
+    const wasLive = state.isLive;
+    syncLeadership(user.id, tipClosedLine);
+
+    const lineNudge = itemLeft > 0 ? ` · ${itemLeft} tk left` : '';
+    const goalNudge = !wasLive && state.isLive ? ' · Director unlocked!' : '';
+    appendActivity(
+      `${user.name} +${amount}tk → "${item.title}"${lineNudge}${goalNudge}`,
+      'success',
+    );
+    if (source === 'extension') {
+      sendToast(user.id, 'success', `Counted: ${amount}tk → "${item.title}"`);
+    }
+
+    // Three mutually-exclusive cases for both the chat AND the overlay notice:
+    //   1. Tip didn't close the menu line → broadcast `tip_received` + emit
+    //      partial-tip chat.
+    //   2. Tip closed the line alone → `checkMenuGoalCompletions` broadcasts
+    //      `menu_goal_complete` with sole contributor + emits `bought "X"`.
+    //   3. Tip closed the line with help → `menu_goal_complete` with multiple
+    //      contributors + anonymous `Room filled "X"`.
+    // Skip the `tip_received` broadcast when the line closes — otherwise
+    // viewers see "X tipped …" followed by "X bought …" / "Room filled …"
+    // back-to-back. Only one notification per logical event.
+    if (!tipClosedLine) {
+      relayActivity({
+        type: 'director.activity',
+        id: `tip_${params.tipKey}`,
+        at: Date.now(),
+        kind: 'tip_received',
+        itemId: item.id,
+        itemTitle: item.title,
+        price: item.price,
+        amount,
+        issuedByName: user.name,
+        preproductionGoal: settings.preproductionGoal,
+      });
+    }
     checkMenuGoalCompletions();
+
+    if (source === 'extension' && !tipClosedLine) {
+      sendChatAtoms(
+        [
+          'tipped',
+          `{#accent}${amount} tk{/accent}`,
+          '→',
+          `{#accent}${item.title}{/accent}`,
+          `{#fade}· ${itemLeft} tk left{/fade}`,
+        ],
+        { userId: user.id, username: user.name },
+      );
+    }
+    // If this tip just unlocked Director Control, emit an unlock notice +
+    // the new Director attribution. These have different authors (anonymous
+    // vs. the new director), so they have to stay as separate chat lines.
+    if (!wasLive && state.isLive) {
+      sendChatAtoms(['Director', 'unlocked', '—', "we're", 'LIVE']);
+      if (state.director.id) {
+        sendChatAtoms(['is', 'Director'], {
+          userId: state.director.id,
+          username: state.director.name,
+        });
+      }
+    }
     sendSelfAllocations(user.id);
     broadcastState();
+    return true;
+  };
+
+  const handleMenuTip = (envelope: Extract<WhisperEnvelope, { type: 'director.menu.tip' }>) => {
+    const payment = validatePayment(envelope.paymentData, envelope.amount, envelope.userId);
+    if (!payment) return;
+
+    const item = state.menu.find((m) => m.id === envelope.itemId) ?? state.menu[0];
+    if (!item) {
+      sendToast(envelope.userId, 'warn', 'No tip menu items available right now');
+      return;
+    }
+
+    applyMenuLineTip({
+      userId: envelope.userId,
+      username: envelope.username,
+      item,
+      amount: envelope.amount,
+      tipKey: payment.transactionId,
+      source: 'extension',
+    });
+  };
+
+  /**
+   * Map a tip we observed via `v1.tokens.spent` to one of our menu lines.
+   * Stripchat's tip-menu source puts the activity name in `tipData.message`,
+   * so we match on title (case-insensitive). If that fails, we fall back to
+   * picking a uniquely-priced item — useful when the host strips the message
+   * or when the model's tip menu uses prices that happen to be 1:1.
+   */
+  const matchMenuItemForNativeTip = (
+    message: string | undefined,
+    amount: number,
+  ): DirectorMenuItem | null => {
+    const trimmed = String(message || '').trim().toLowerCase();
+    if (trimmed) {
+      const byTitle = state.menu.find(
+        (m) => m.title.trim().toLowerCase() === trimmed,
+      );
+      if (byTitle) return byTitle;
+    }
+    const byPrice = state.menu.filter(
+      (m) => m.price === amount || m.basePrice === amount,
+    );
+    if (byPrice.length === 1) return byPrice[0]!;
+    return null;
+  };
+
+  const handleNativeTip = (payload: TEvents['v1.tokens.spent']) => {
+    const tipData = payload.tipData;
+    // Tips initiated by *this* extension already flow through the whisper
+    // pipeline (`handleMenuTip`); the same payment also re-emits as
+    // `v1.tokens.spent` with `isOriginalSource === true`, so we skip those
+    // here to avoid double-counting.
+    if (tipData.isOriginalSource) return;
+    // Only tips the host explicitly bound to a menu position are unambiguous
+    // enough to attribute. Other sources (console, fullscreen, generic
+    // sendTipButton, etc.) can't be reliably mapped to a line.
+    if (tipData.source !== 'tipMenu') return;
+
+    const amount = Math.max(0, Math.floor(Number(tipData.amount) || 0));
+    if (!amount) return;
+
+    const item = matchMenuItemForNativeTip(tipData.message, amount);
+    if (!item) {
+      void ext
+        .makeRequest('v1.monitoring.report.log', {
+          message: 'director: native tipMenu tip could not be matched to a menu line',
+          data: { message: tipData.message ?? null, amount, tipId: tipData.id },
+        })
+        .catch(() => undefined);
+      return;
+    }
+
+    // Identity: logged-in tippers keep their stable id. Anonymous tippers get
+    // a per-tip synthetic id so they don't all collapse onto the same bucket
+    // (which would otherwise pile every anonymous tip onto a single allocation
+    // and a single Director-seat contender).
+    const tipUser = tipData.user ?? null;
+    const isLoggedIn = Boolean(tipUser && !tipUser.isGuest);
+    const userId = isLoggedIn
+      ? String((tipUser as Extract<TV1ExtUser, { isGuest: false }>).id)
+      : `anon_${tipData.id}`;
+    const username = isLoggedIn
+      ? String((tipUser as Extract<TV1ExtUser, { isGuest: false }>).username || 'viewer')
+      : tipData.isAnonymous
+        ? 'Anonymous'
+        : 'Guest';
+
+    applyMenuLineTip({
+      userId,
+      username,
+      item,
+      amount,
+      tipKey: tipData.id,
+      source: 'native',
+    });
   };
 
   const handleChairChase = (envelope: Extract<WhisperEnvelope, { type: 'director.chair.chase' }>) => {
     const payment = validatePayment(envelope.paymentData, envelope.amount, envelope.userId);
     if (!payment) return;
 
-    if (!state.isLive || !state.director.id) {
-      sendToast(envelope.userId, 'warn', 'Director takeover only works while we are live');
-      return;
-    }
-
-    const tenureLeft = state.director.startedAt
-      ? Math.max(0, state.director.startedAt + settings.minTenureSec * 1000 - Date.now())
-      : 0;
-    if (tenureLeft > 0) {
-      sendToast(envelope.userId, 'warn', 'Wait until the Director safe window ends');
-      return;
-    }
-
-    if (state.director.id === envelope.userId) {
-      sendToast(envelope.userId, 'warn', 'You are already the Director');
-      return;
-    }
+    const amount = Math.max(0, Math.floor(envelope.amount));
+    if (amount <= 0) return;
 
     const user = ensureUser(envelope.userId, envelope.username);
     if (!user) return;
 
-    const need = chairCatchUpTokens(
-      state.director.total,
-      settings.overtakeMargin,
-      user.total,
-    );
-    if (need <= 0) {
-      sendToast(envelope.userId, 'info', 'You already qualify—syncing…');
-      syncLeadership(user.id);
-      broadcastState();
-      return;
-    }
-
-    const amount = Math.max(0, Math.floor(envelope.amount));
-    if (amount !== need) {
-      sendToast(envelope.userId, 'warn', `Tip exactly ${need} tk to become Director`);
-      return;
-    }
-
-    const item = state.menu[0];
-    if (!item) {
-      sendToast(user.id, 'warn', 'No menu lines to attach this tip to');
-      return;
-    }
-
     markTransaction(payment.transactionId);
 
+    // Always credit the payment so the chaser never silently loses tokens to
+    // a race with concurrent tips, an active tenure window, or a stale UI.
+    // Chair-chase tokens count toward session totals and the user's running
+    // total (used for seat math) but are deliberately NOT applied to any menu
+    // line's allocation — they're seat-takeover money, not a menu tip, so they
+    // must not show up as a goal contribution or trigger goal completion.
     user.total += amount;
-    user.allocations[item.id] = (user.allocations[item.id] ?? 0) + amount;
     state.totalSessionTips += amount;
 
+    const wasLive = state.isLive;
+    const previousDirectorId = state.director.id;
     syncLeadership(user.id);
-    appendActivity(`${user.name} +${amount}tk → Director chase`, 'success');
-    sendToast(user.id, 'success', `${amount}tk toward the Director seat`);
-    checkMenuGoalCompletions();
+    const tookSeat = state.director.id === user.id && previousDirectorId !== user.id;
+    // When a chase pays enough to unlock the room AND seat the chaser in one
+    // shot (the new "Become Director" direct-buy flow), `syncLeadership`
+    // already broadcasts a `control_unlock` activity. Suppress the
+    // `chair_chase_takeover` follow-up so viewers don't see two overlapping
+    // hero banners about the same moment.
+    const liveJustStarted = !wasLive && state.isLive;
+
+    if (tookSeat) {
+      appendActivity(`${user.name} +${amount}tk → Director chase`, 'success');
+      sendToast(user.id, 'success', `${amount}tk toward the Director seat`);
+      // Short line — `setDirector(reason='overtake')` (triggered by
+      // syncLeadership above) already emits a second attributed
+      // "took the Director seat" message, so the chaser ends up with two
+      // tidy lines instead of one long combined one.
+      sendChatAtoms(['tipped', `{#accent}${amount} tk{/accent}`], {
+        userId: envelope.userId,
+        username: envelope.username,
+      });
+      if (!liveJustStarted) {
+        relayActivity({
+          type: 'director.activity',
+          // Deterministic id from transactionId so the chaser's iframe dedupes
+          // this event against the one their viewerBackground already broadcast.
+          id: `chase_${payment.transactionId}`,
+          at: Date.now(),
+          kind: 'chair_chase_takeover',
+          issuedByName: user.name,
+          directorName: state.director.name,
+        });
+      }
+    } else if (state.director.id === user.id) {
+      sendToast(user.id, 'info', `${amount}tk credited — you already hold the seat`);
+    } else {
+      const stillNeed = chairCatchUpTokens(
+        state.director.total,
+        settings.overtakeMargin,
+        user.total,
+      );
+      const tenureLeft = state.director.startedAt
+        ? Math.max(0, state.director.startedAt + settings.minTenureSec * 1000 - Date.now())
+        : 0;
+      if (tenureLeft > 0) {
+        sendToast(
+          user.id,
+          'info',
+          `${amount}tk credited — Director safe ${Math.ceil(tenureLeft / 1000)}s more`,
+        );
+      } else if (stillNeed > 0) {
+        sendToast(user.id, 'info', `${amount}tk credited — ${stillNeed}tk more to take the seat`);
+      } else {
+        sendToast(user.id, 'info', `${amount}tk credited`);
+      }
+    }
+
     sendSelfAllocations(user.id);
     broadcastState();
   };
 
-  const handleReallocate = (
-    envelope: Extract<WhisperEnvelope, { type: 'director.menu.reallocate' }>,
-  ) => {
-    const payment = validatePayment(envelope.paymentData, 1, envelope.userId);
-    if (!payment) return;
-    markTransaction(payment.transactionId);
+  /**
+   * Apply a single move record drained from `v1.storage`. The viewer already
+   * paid for the original tip, so this is just a state shuffle — no payment
+   * validation, just sanity checks against the user's existing allocations.
+   * Returns true when the record applied (state mutated).
+   */
+  const applyMoveRecord = (record: {
+    txnId: string;
+    userId: string;
+    username: string;
+    fromItemId: string;
+    toItemId: string;
+    amount: number;
+  }): boolean => {
+    const fromId = String(record.fromItemId || '').trim();
+    const toId = String(record.toItemId || '').trim();
+    const amount = Math.max(0, Math.floor(record.amount));
+    const userId = String(record.userId || '').trim();
 
-    const user = ensureUser(envelope.userId, envelope.username);
-    if (!user) return;
+    console.log('[director-apply] checking move record', {
+      txnId: record.txnId,
+      fromId,
+      toId,
+      amount,
+      userId,
+    });
 
-    const fromId = String(envelope.fromItemId || '').trim();
-    const toId = String(envelope.toItemId || '').trim();
-    const amount = Math.max(0, Math.floor(envelope.amount));
     if (!fromId || !toId || fromId === toId || !amount) {
-      sendToast(user.id, 'warn', 'Invalid reallocation request');
-      return;
+      console.log('[director-apply] validation failed - invalid ids/amount');
+      reportError('director: move record validation failed', {
+        txnId: record.txnId,
+        fromId,
+        toId,
+        amount,
+      });
+      return false;
     }
+
+    const user = state.users[userId];
+    if (!user) {
+      console.log('[director-apply] user not found', { userId });
+      reportError('director: move user not found in state', {
+        txnId: record.txnId,
+        userId,
+        username: record.username,
+      });
+      return false;
+    }
+
     const fromItem = state.menu.find((m) => m.id === fromId);
     const toItem = state.menu.find((m) => m.id === toId);
     if (!fromItem || !toItem) {
+      console.log('[director-apply] menu items not found', { fromId, toId, menuIds: state.menu.map((m) => m.id) });
+      reportError('director: move menu items not found', {
+        txnId: record.txnId,
+        fromId,
+        toId,
+      });
       sendToast(user.id, 'warn', 'One of the menu positions is no longer available');
-      return;
+      return false;
     }
 
     const available = clampInt(user.allocations[fromId], 0);
+    console.log('[director-apply] checking funds', { available, requested: amount });
     if (available < amount) {
-      sendToast(user.id, 'warn', `Not enough balance in "${fromItem.title}"`);
-      return;
+      console.log('[director-apply] insufficient funds');
+      reportError('director: move insufficient funds', {
+        txnId: record.txnId,
+        userId,
+        fromId,
+        available,
+        requested: amount,
+      });
+      return false;
     }
 
     user.allocations[fromId] = available - amount;
     if (user.allocations[fromId] <= 0) delete user.allocations[fromId];
     user.allocations[toId] = (user.allocations[toId] ?? 0) + amount;
 
+    console.log('[director-apply] move applied successfully', {
+      txnId: record.txnId,
+      userId,
+      fromId,
+      toId,
+      amount,
+    });
+
     appendActivity(
       `${user.name} moved ${amount}tk: "${fromItem.title}" → "${toItem.title}"`,
       'info',
     );
+    reportError('director: move applied successfully', {
+      txnId: record.txnId,
+      userId,
+      fromId,
+      toId,
+      amount,
+    });
     sendToast(user.id, 'success', `Reallocated ${amount}tk`);
-    checkMenuGoalCompletions();
-    sendSelfAllocations(user.id);
-    broadcastState();
+    return true;
   };
 
   const handleCommandIssue = (
@@ -664,8 +1109,12 @@ export const startModelBackground = (): (() => void) => {
     markTransaction(payment.transactionId);
 
     const durationMs = settings.commandDurationSec * 1000;
+    // Deterministic id derived from the unique transactionId so the viewer's
+    // own `handleWhispered` (which receives this same event back from the
+    // model's room whisper) dedupes against the activity already in flight
+    // and does not re-claim the host activity slot.
     const entry: DirectorPerformance = {
-      id: `cmd_${now}_${Math.random().toString(36).slice(2, 6)}`,
+      id: `cmd_${payment.transactionId}`,
       commandId: command.id,
       label: command.label,
       emoji: command.emoji,
@@ -678,7 +1127,8 @@ export const startModelBackground = (): (() => void) => {
       endsAt: now + durationMs,
     };
 
-    if (!state.currentPerformance) {
+    const willStartImmediately = !state.currentPerformance;
+    if (willStartImmediately) {
       state.currentPerformance = entry;
     } else {
       state.queue.push(entry);
@@ -701,17 +1151,26 @@ export const startModelBackground = (): (() => void) => {
     state.flashAt = now;
 
     appendActivity(`Director: ${command.emoji} ${command.label}`, 'spotlight');
-    relayActivity({
-      type: 'director.activity',
-      id: entry.id,
-      at: now,
-      kind: 'command_start',
-      commandId: command.id,
-      label: command.label,
-      emoji: command.emoji,
-      issuedByName: envelope.username,
-    });
-    sendPublicChat(`Director called: ${command.emoji} ${command.label}`);
+    // Only fire the decorative `command_start` when this command is actually
+    // starting now. For queued commands the `tick` handler broadcasts the
+    // same id when it dequeues, so iframes get exactly one notification at
+    // the moment the cue truly begins on stream.
+    if (willStartImmediately) {
+      relayActivity({
+        type: 'director.activity',
+        id: entry.id,
+        at: now,
+        kind: 'command_start',
+        commandId: command.id,
+        label: command.label,
+        emoji: command.emoji,
+        issuedByName: envelope.username,
+      });
+    }
+    sendChatAtoms(
+      ['called', command.emoji, `{#accent}${command.label}{/accent}`],
+      { userId: envelope.userId, username: envelope.username },
+    );
 
     sendToast(envelope.userId, 'success', `"${command.label}" sent`);
     broadcastState();
@@ -725,21 +1184,52 @@ export const startModelBackground = (): (() => void) => {
   const pauseGameRound = () => {
     state.gameAccepting = false;
     state.isLive = false;
+    state.totalSessionTips = 0;
     state.director = { id: null, name: 'Open seat', total: 0, startedAt: 0 };
     state.challenger = { id: null, name: 'No chase yet', total: 0 };
+    state.users = {};
     state.currentPerformance = null;
     state.queue = [];
     state.commandHistory = [];
     state.commandCooldowns = {};
     state.flashAt = 0;
+    state.activityFeed = [];
+    state.seenTransactions = new Set();
+    state.seenMoveTxnIds = new Set();
+    state.drainingMoves = false;
+    void clearGameState(ext);
     void clearHostActivity(ext, hostActivitySlot);
-    appendActivity('Broadcaster paused Director mode', 'info');
+    appendActivity('Model paused Director game', 'info');
+    relayActivity({
+      type: 'director.activity',
+      id: `paused_${Date.now()}`,
+      at: Date.now(),
+      kind: 'game_paused',
+      preproductionGoal: settings.preproductionGoal,
+    });
+    // Single chat message — atoms split by newlines render as separate rows.
+    sendChatAtoms([
+      'Director game paused.',
+      '{#fade}Menu tips still stack.{/fade}',
+    ]);
     broadcastState();
   };
 
   const resumeGameRound = () => {
     state.gameAccepting = true;
-    appendActivity('Broadcaster resumed Director mode', 'info');
+    appendActivity('Model started Director game', 'info');
+    relayActivity({
+      type: 'director.activity',
+      id: `started_${Date.now()}`,
+      at: Date.now(),
+      kind: 'game_started',
+      preproductionGoal: settings.preproductionGoal,
+    });
+    sendChatAtoms([
+      'Director game started.',
+      'Reach the {#accent}unlock goal{/accent} to release the remote.',
+      '{#fade}Top spender becomes Director.{/fade}',
+    ]);
     syncLeadership(null);
     broadcastState();
   };
@@ -747,6 +1237,9 @@ export const startModelBackground = (): (() => void) => {
   const handleWhispered = (data: TEvents['v1.ext.whispered']) => {
     if (!isWhisperEnvelope(data)) return;
     if (data.type === 'director.activity') {
+      return;
+    }
+    if (data.type === 'director.chat.message') {
       return;
     }
     if (data.type === 'director.state.request') {
@@ -758,7 +1251,8 @@ export const startModelBackground = (): (() => void) => {
       return;
     }
     if (data.type === 'director.menu.reallocate') {
-      handleReallocate(data);
+      // Reallocations now flow through `v1.storage` (drained on tick); the
+      // legacy whisper envelope is ignored for backward compatibility.
       return;
     }
     if (data.type === 'director.chair.chase') {
@@ -791,7 +1285,6 @@ export const startModelBackground = (): (() => void) => {
       state = createInitialState();
       state.menu = preservedMenu;
       state.menuSource = preservedSource;
-      menuGoalsCompleted.clear();
       state.gameAccepting = false;
       void clearHostActivity(ext, hostActivitySlot);
       appendActivity('Strike — model cleared the set', 'spotlight');
@@ -843,7 +1336,83 @@ export const startModelBackground = (): (() => void) => {
     /* Channel free for `v1.ext.activity.request` (see SDK `v1.ext.activity.available`). */
   };
 
+  /**
+   * Pull any move records the viewer slot pushed via `submitMove` and apply
+   * them. Runs as a fire-and-forget alongside the regular sync tick; a single
+   * `drainingMoves` flag prevents re-entry while a previous drain is in flight.
+   */
+  const drainMovesTick = () => {
+    if (state.drainingMoves) {
+      console.log('[director-tick] drain already in progress, skipping');
+      return;
+    }
+    state.drainingMoves = true;
+    console.log('[director-tick] drain tick started');
+    
+    void (async () => {
+      try {
+        const records = await drainMoves(ext, state.seenMoveTxnIds, reportError);
+        console.log('[director-tick] drainMoves returned', { recordCount: records.length });
+        
+        if (!records.length) {
+          console.log('[director-tick] no new records to process');
+          return;
+        }
+
+        console.log('[director-tick] processing records', {
+          count: records.length,
+          records: records.map((r) => ({ txnId: r.txnId, userId: r.userId, amount: r.amount })),
+        });
+
+        const touchedUserIds = new Set<string>();
+        let appliedAny = false;
+        for (const record of records) {
+          state.seenMoveTxnIds.add(record.txnId);
+          const applied = applyMoveRecord(record);
+          console.log('[director-tick] apply result', { txnId: record.txnId, applied });
+          if (applied) {
+            touchedUserIds.add(String(record.userId));
+            appliedAny = true;
+          }
+        }
+
+        // Cap the seen set so it doesn't grow unbounded across long sessions.
+        if (state.seenMoveTxnIds.size > 500) {
+          const arr = Array.from(state.seenMoveTxnIds);
+          state.seenMoveTxnIds = new Set(arr.slice(arr.length - 250));
+        }
+
+        if (!appliedAny) {
+          console.log('[director-tick] no moves applied, skipping state update');
+          return;
+        }
+
+        console.log('[director-tick] updating state for users', { userIds: Array.from(touchedUserIds) });
+
+        // Refresh derived state for affected users. user.total is session-lifetime
+        // tips — it must not be recomputed from allocations because completed
+        // menu goals call clearItemAllocations() (history is intentionally not
+        // kept in user.allocations). Moves only shuffle allocations between
+        // items and never add new tokens, so user.total stays correct as-is.
+        for (const uid of touchedUserIds) {
+          if (!state.users[uid]) continue;
+          sendSelfAllocations(uid);
+        }
+        if (state.isLive) syncLeadership(null);
+        checkMenuGoalCompletions();
+        broadcastState();
+        console.log('[director-tick] state updated and broadcast');
+      } catch (err) {
+        console.error('[director-tick] drain error', { err });
+      } finally {
+        state.drainingMoves = false;
+        console.log('[director-tick] drain tick completed');
+      }
+    })();
+  };
+
   const tick = () => {
+    drainMovesTick();
     const now = Date.now();
     let dirty = false;
 
@@ -923,12 +1492,44 @@ export const startModelBackground = (): (() => void) => {
       applyTipMenu(null);
     }
 
+    // Restore persisted game state — survives model page refresh.
+    // Only pauseGameRound (Stop Goal) clears this.
+    try {
+      const saved = await loadGameState(ext);
+      if (saved && saved.gameAccepting) {
+        state.gameAccepting = saved.gameAccepting;
+        state.isLive = saved.isLive;
+        state.totalSessionTips = saved.totalSessionTips;
+        state.director = { ...saved.director };
+        state.challenger = { ...saved.challenger };
+        // Re-hydrate user allocations
+        for (const u of saved.users) {
+          if (!u.id) continue;
+          state.users[u.id] = {
+            id: u.id,
+            name: u.name,
+            total: u.total,
+            allocations: { ...u.allocations },
+          };
+        }
+        void ext
+          .makeRequest('v1.monitoring.report.log', {
+            message: 'director: restored game state from storage',
+            data: { userCount: saved.users.length, isLive: saved.isLive, savedAt: saved.savedAt },
+          })
+          .catch(() => undefined);
+      }
+    } catch (err) {
+      reportError('director: failed to restore game state', { err: String(err) });
+    }
+
     ext.subscribe('v1.ext.whispered', handleWhispered);
     ext.subscribe('v1.payment.tokens.spend.succeeded', relayChairChaseSpendFromModelClient);
     ext.subscribe('v1.tipMenu.updated', handleTipMenuUpdated);
     ext.subscribe('v1.ext.context.updated', handleContextUpdated);
     ext.subscribe('v1.ext.activity.busy', handleActivityBusy);
     ext.subscribe('v1.ext.activity.available', handleActivityAvailable);
+    ext.subscribe('v1.tokens.spent', handleNativeTip);
 
     tickTimer = setInterval(tick, TICK_MS);
     heartbeatTimer = setInterval(broadcastState, HEARTBEAT_MS);
@@ -955,6 +1556,7 @@ export const startModelBackground = (): (() => void) => {
     ext.unsubscribe('v1.ext.context.updated', handleContextUpdated);
     ext.unsubscribe('v1.ext.activity.busy', handleActivityBusy);
     ext.unsubscribe('v1.ext.activity.available', handleActivityAvailable);
+    ext.unsubscribe('v1.tokens.spent', handleNativeTip);
     void clearHostActivity(ext, hostActivitySlot);
   };
 };

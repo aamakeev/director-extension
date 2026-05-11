@@ -22,7 +22,6 @@ input {
 }
 
 :root {
-  color-scheme: light;
   --d-accent: #8c4a17;
   --d-accent-strong: #8c4a17;
   --d-danger: #c0354b;
@@ -33,7 +32,6 @@ input {
 }
 
 html[data-theme='dark'] {
-  color-scheme: dark;
   --d-accent: #e6a04a;
   --d-accent-strong: #c97a3a;
   --d-danger: #ff7a8c;
@@ -48,22 +46,15 @@ html[data-theme='dark'] input {
   color: #f8f8f8;
 }
 
-html[data-theme='light'] {
-  color-scheme: light;
-}
-
 html {
-  /* `dark light` lets the UA pick a dark canvas in iframes — avoid unless theme is known. */
+  /* Keep color-scheme neutral so the UA does not paint a dark/light canvas
+     behind the iframe — the host panel shows through unchanged. */
   color-scheme: normal;
   font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica,
     Arial, sans-serif;
   font-size: 14px;
   line-height: 20px;
   -webkit-font-smoothing: antialiased;
-}
-
-html[data-theme='dark'] {
-  color-scheme: dark;
 }
 
 input {
@@ -87,8 +78,8 @@ input {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: 12px 14px;
-  border-radius: 10px;
+  padding: 14px 18px;
+  border-radius: 14px;
   border: 1px solid var(--d-card-border);
   background: var(--d-card-bg);
   box-shadow: var(--d-card-shadow);
@@ -117,8 +108,8 @@ input {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 14px 16px 16px;
-  border-radius: 12px;
+  padding: 18px;
+  border-radius: 14px;
   border: 1px solid var(--d-card-border);
   background: var(--d-card-bg);
   box-shadow: var(--d-card-shadow);
@@ -175,21 +166,194 @@ html[data-theme='light'] .settings-section-head h2 {
 }
 
 .settings-fields .input-wrap input {
-  height: 40px;
-  padding: 0 44px 0 14px;
+  height: 44px;
 }
 
-/* Slot-width aware (not browser viewport) — see AGENTS.md layout rules */
+/* Slot-width aware (not browser viewport) — see AGENTS.md layout rules.
+ * The host hands us an iframe of arbitrary width; we adapt to it via
+ * container queries rather than @media. */
 @container settings (max-width: 540px) {
   .settings-fields {
     grid-template-columns: 1fr;
   }
 }
 
+/* The Stripchat dashboard settings modal stays tablet-sized on phones, so
+ * neither @container nor @media fire on real mobile devices. main.tsx flips
+ * html[data-narrow='1'] based on window.screen.width (which reflects the
+ * physical device, not the iframe), and we mirror that here. */
+html[data-narrow='1'] .settings-fields {
+  grid-template-columns: 1fr;
+}
+
+/* Narrow slot — fires whenever main.tsx flags the device or iframe as narrow
+ * (set on <html data-narrow='1'>). Single source of truth instead of a
+ * separate @container path, because the host modal often stays tablet-sized
+ * on phones and container/media queries can't see the real device. */
+html[data-narrow='1'] .settings-shell {
+  padding: 14px 10px;
+  gap: 16px;
+}
+
+html[data-narrow='1'] .settings-brand {
+  padding: 12px 14px;
+}
+
+html[data-narrow='1'] .settings-section {
+  padding: 14px 12px;
+  gap: 12px;
+}
+
+html[data-narrow='1'] .settings-section-head h2 {
+  font-size: 13px;
+}
+
+html[data-narrow='1'] .pricing-anim {
+  padding: 12px 12px 14px;
+}
+
+html[data-narrow='1'] .pricing-anim-top {
+  gap: 6px 10px;
+}
+
+html[data-narrow='1'] .pa-item {
+  font-size: 14px;
+}
+
+html[data-narrow='1'] .pa-compare {
+  font-size: 13px;
+}
+
+html[data-narrow='1'] .pa-bar-wrap {
+  padding-top: 46px;
+}
+
+html[data-narrow='1'] .pa-tip {
+  min-width: 60px;
+  max-width: 92px;
+  padding: 4px 6px;
+  gap: 2px;
+}
+
+html[data-narrow='1'] .pa-tip-nick {
+  font-size: 11px;
+}
+
+html[data-narrow='1'] .pa-tip-amt {
+  font-size: 15px;
+}
+
+/* Re-distribute the three absolutely positioned chips so they no longer
+ * overlap at this narrow width. */
+html[data-narrow='1'] .pa-tip-a {
+  left: 4%;
+}
+
+html[data-narrow='1'] .pa-tip-b {
+  left: 50%;
+  margin-left: -30px;
+}
+
+html[data-narrow='1'] .pa-tip-c {
+  right: 4%;
+}
+
+html[data-narrow='1'] .pricing-anim[data-pa-chips='2'] .pa-tip-a {
+  left: 12%;
+}
+
+html[data-narrow='1'] .pricing-anim[data-pa-chips='2'] .pa-tip-b {
+  right: 6%;
+}
+
+html[data-narrow='1'] .pricing-anim[data-pa-chips='1'] .pa-tip-a {
+  left: 50%;
+  margin-left: -30px;
+}
+
+html[data-narrow='1'] .pa-remote-status {
+  height: 26px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+html[data-narrow='1'] .pa-remote-state {
+  padding: 5px 10px;
+  gap: 6px;
+}
+
+html[data-narrow='1'] .pa-remote-icon {
+  font-size: 13px;
+}
+
+html[data-narrow='1'] .input-wrap input {
+  height: 40px;
+  padding: 10px 50px 10px 14px;
+  font-size: 14px;
+}
+
+html[data-narrow='1'] .settings-fields .input-wrap input {
+  height: 40px;
+}
+
+html[data-narrow='1'] .field label {
+  font-size: 13px;
+}
+
+html[data-narrow='1'] .field .hint,
+html[data-narrow='1'] .field .err {
+  font-size: 12px;
+}
+
+/* Deck remote preview — already capped at 320px max-width; tighten the grid
+ * gap and key sizing so it doesn't dominate the narrow card. */
+html[data-narrow='1'] .deck-remote {
+  max-width: 100%;
+  padding: 10px 10px 12px;
+}
+
+html[data-narrow='1'] .deck-key {
+  min-height: 50px;
+  padding: 8px 6px 9px;
+}
+
+html[data-narrow='1'] .deck-key-emoji {
+  font-size: 20px;
+}
+
+html[data-narrow='1'] .deck-key-label {
+  font-size: 12px;
+}
+
+/* Race preview — keep readable but shrink the duel cards. */
+html[data-narrow='1'] .race-preview {
+  padding: 14px 14px 16px;
+  gap: 14px;
+}
+
+html[data-narrow='1'] .race-card {
+  padding: 10px 12px;
+}
+
+html[data-narrow='1'] .race-name {
+  font-size: 16px;
+}
+
+html[data-narrow='1'] .race-tk {
+  font-size: 13px;
+}
+
+html[data-narrow='1'] .race-mini {
+  font-size: 10px;
+}
+
+html[data-narrow='1'] .race-meter-label {
+  font-size: 11px;
+}
+
 /* Make a single-field section span full width nicely */
 .settings-fields > .field:only-child {
   grid-column: 1 / -1;
-  max-width: 320px;
 }
 
 .field {
@@ -214,27 +378,55 @@ html[data-theme='light'] .settings-section-head h2 {
 
 .input-wrap input {
   width: 100%;
-  height: 40px;
-  padding: 10px 44px 10px 16px;
-  border: 1px solid currentColor;
-  border-color: rgba(127, 127, 127, 0.4);
-  border-radius: 20px;
-  background-color: rgba(127, 127, 127, 0.12);
-  font-size: 14px;
+  height: 44px;
+  padding: 10px 56px 10px 18px;
+  border: 1px solid rgba(140, 74, 23, 0.18);
+  border-radius: 12px;
+  background-color: rgba(255, 250, 244, 0.96);
+  color: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   line-height: 20px;
   outline: none;
-  transition: border-color 120ms ease, background-color 120ms ease;
+  appearance: none;
+  -webkit-appearance: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+html[data-theme='dark'] .input-wrap input {
+  border-color: rgba(255, 200, 130, 0.18);
+  background-color: rgba(36, 28, 22, 0.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .input-wrap input::-webkit-outer-spin-button,
 .input-wrap input::-webkit-inner-spin-button {
   margin: 0;
   appearance: none;
+  -webkit-appearance: none;
+}
+
+.input-wrap input:hover {
+  border-color: rgba(140, 74, 23, 0.32);
+}
+
+html[data-theme='dark'] .input-wrap input:hover {
+  border-color: rgba(255, 200, 130, 0.3);
 }
 
 .input-wrap input:focus {
-  border-color: rgba(127, 127, 127, 0.7);
-  background-color: rgba(127, 127, 127, 0.2);
+  border-color: var(--d-accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 0 0 3px rgba(217, 122, 22, 0.18);
+}
+
+html[data-theme='dark'] .input-wrap input:focus {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 0 0 3px rgba(230, 160, 74, 0.22);
 }
 
 .input-wrap input:disabled {
@@ -516,134 +708,123 @@ html[data-theme='dark'] .deck-key {
 
 .race-preview {
   margin: 0 auto 14px;
-  padding: 14px 16px 16px;
+  padding: 18px 20px 20px;
   border-radius: 14px;
   border: 1px solid rgba(127, 127, 127, 0.22);
   background: transparent;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   width: 100%;
-  max-width: min(100%, 480px);
-}
-
-.race-card {
-  padding: 10px 12px;
-}
-
-.race-name {
-  word-break: break-word;
+  max-width: min(100%, 520px);
 }
 
 .race-row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
 }
 
 .race-card {
   flex: 1;
   min-width: 0;
-  padding: 8px 10px;
-  border-radius: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
   border: 1px solid rgba(127, 127, 127, 0.22);
   background: rgba(127, 127, 127, 0.06);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.race-card--director {
-  border-color: rgba(230, 160, 74, 0.45);
-  box-shadow: 0 0 0 1px rgba(230, 160, 74, 0.08);
-}
-
-.race-mini {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: inherit;
-  opacity: 0.5;
-}
-
-.race-name {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.race-tk {
-  font-size: 12px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.75;
-}
-
-.race-vs {
-  font-size: 11px;
-  font-weight: 800;
-  opacity: 0.35;
-  flex-shrink: 0;
-}
-
-.race-pressure {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.race-pressure-track {
-  height: 5px;
+.race-card--director {
+  border-color: rgba(230, 160, 74, 0.55);
+  background: rgba(230, 160, 74, 0.08);
+  box-shadow: 0 0 0 1px rgba(230, 160, 74, 0.12);
+}
+
+.race-mini {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: inherit;
+  opacity: 0.55;
+}
+
+.race-name {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.race-tk {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.race-card--director .race-tk {
+  color: var(--d-accent);
+  opacity: 1;
+}
+
+.race-vs {
+  align-self: center;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+.race-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.race-meter-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+
+.race-meter-label > span:last-child {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--d-accent);
+  opacity: 1;
+}
+
+.race-meter-bar {
+  height: 8px;
   border-radius: 999px;
-  background: rgba(127, 127, 127, 0.16);
+  background: rgba(127, 127, 127, 0.18);
   overflow: hidden;
 }
 
-.race-pressure-track > span {
+.race-meter-bar > span {
   display: block;
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #c97a3a, #e8602f);
+  transition: width 280ms ease;
 }
 
-.race-gap-num {
-  font-size: 11px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  color: var(--d-accent);
+.race-meter-bar--shield > span {
+  background: linear-gradient(90deg, #6b5a3a, #d39a4f, #ffe8a8);
   opacity: 0.95;
-}
-
-.race-shield {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.race-shield-track {
-  flex: 1;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(127, 127, 127, 0.16);
-  overflow: hidden;
-}
-
-.race-shield-track > span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--d-accent-strong);
-}
-
-.race-shield-time {
-  font-size: 12px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.85;
-  min-width: 3.2em;
-  text-align: right;
 }
 
 html[data-theme='dark'] .deck-key-label {
@@ -833,10 +1014,13 @@ html[data-theme='dark'] .deck-key-label {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px 14px;
+  margin: 0 auto 14px;
+  padding: 14px 16px 16px;
   border-radius: 14px;
   border: 1px solid rgba(127, 127, 127, 0.22);
-  background: rgba(127, 127, 127, 0.05);
+  background: transparent;
+  width: 100%;
+  max-width: min(100%, 480px);
 }
 
 .pricing-anim-top {
@@ -878,7 +1062,7 @@ html[data-theme='light'] .pa-base {
 .pa-director {
   font-weight: 800;
   color: var(--d-accent);
-  animation: pa-price-pulse 5s linear infinite;
+  animation: pa-price-pulse 8s linear infinite;
 }
 
 .pa-flat {
@@ -886,35 +1070,25 @@ html[data-theme='light'] .pa-base {
   font-variant-numeric: tabular-nums;
   color: inherit;
   opacity: 0.92;
-  animation: pa-flat-pulse 5s linear infinite;
+  animation: pa-flat-pulse 8s linear infinite;
 }
 
 @keyframes pa-price-pulse {
-  0%,
-  86% {
-    filter: brightness(1);
-  }
-  90%,
-  98% {
-    filter: brightness(1.32);
-  }
-  100% {
-    filter: brightness(1);
-  }
+  0%, 56% { filter: brightness(1); }
+  60%, 68% { filter: brightness(1.32); }
+  72%, 100% { filter: brightness(1); }
 }
 
 @keyframes pa-flat-pulse {
-  0%,
-  86% {
+  0%, 56% {
     filter: brightness(1);
     opacity: 0.92;
   }
-  90%,
-  98% {
+  60%, 68% {
     filter: brightness(1.12);
     opacity: 1;
   }
-  100% {
+  72%, 100% {
     filter: brightness(1);
     opacity: 0.92;
   }
@@ -923,7 +1097,7 @@ html[data-theme='light'] .pa-base {
 .pa-bar-wrap {
   position: relative;
   margin-top: 2px;
-  padding-top: 36px;
+  padding-top: 56px;
 }
 
 .pa-bar {
@@ -938,7 +1112,7 @@ html[data-theme='light'] .pa-base {
   width: 0%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--d-accent-strong), var(--d-accent));
-  animation: pa-bar-3 5s linear infinite;
+  animation: pa-bar-3 8s linear infinite;
 }
 
 .pricing-anim[data-pa-chips='2'] .pa-bar-fill {
@@ -949,62 +1123,31 @@ html[data-theme='light'] .pa-base {
   animation-name: pa-bar-1;
 }
 
-/* Bar: three plateaus — tips fire when each step completes */
+/* Bar: three plateaus — tips fire when each step completes. The bar reaches
+ * 100% at ~62% of the cycle, then holds the filled state until the loop
+ * restarts so the viewer has ~3s to read the "Director unlocked" payoff. */
 @keyframes pa-bar-3 {
-  0%,
-  2% {
-    width: 0%;
-  }
-  22% {
-    width: 33.333%;
-  }
-  38% {
-    width: 33.333%;
-  }
-  58% {
-    width: 66.666%;
-  }
-  74% {
-    width: 66.666%;
-  }
-  96% {
-    width: 100%;
-  }
-  100% {
-    width: 100%;
-  }
+  0%, 5% { width: 0%; }
+  15% { width: 33.333%; }
+  25% { width: 33.333%; }
+  35% { width: 66.666%; }
+  45% { width: 66.666%; }
+  60% { width: 100%; }
+  100% { width: 100%; }
 }
 
 @keyframes pa-bar-2 {
-  0%,
-  2% {
-    width: 0%;
-  }
-  24% {
-    width: 50%;
-  }
-  40% {
-    width: 50%;
-  }
-  96% {
-    width: 100%;
-  }
-  100% {
-    width: 100%;
-  }
+  0%, 5% { width: 0%; }
+  20% { width: 50%; }
+  35% { width: 50%; }
+  60% { width: 100%; }
+  100% { width: 100%; }
 }
 
 @keyframes pa-bar-1 {
-  0%,
-  3% {
-    width: 0%;
-  }
-  94% {
-    width: 100%;
-  }
-  100% {
-    width: 100%;
-  }
+  0%, 5% { width: 0%; }
+  60% { width: 100%; }
+  100% { width: 100%; }
 }
 
 .pa-tip {
@@ -1013,20 +1156,24 @@ html[data-theme='light'] .pa-base {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
-  min-width: 56px;
-  max-width: 88px;
+  gap: 3px;
+  min-width: 88px;
+  max-width: 130px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(127, 127, 127, 0.1);
+  border: 1px solid rgba(230, 160, 74, 0.22);
   opacity: 0;
-  transform: translateY(7px) scale(0.88);
+  transform: translateY(10px) scale(0.85);
 }
 
 .pa-tip-nick {
-  font-size: 9px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.1;
   letter-spacing: 0.01em;
   color: inherit;
-  opacity: 0.72;
+  opacity: 0.85;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1034,7 +1181,7 @@ html[data-theme='light'] .pa-base {
 }
 
 .pa-tip-amt {
-  font-size: 11px;
+  font-size: 18px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: var(--d-accent);
@@ -1044,18 +1191,18 @@ html[data-theme='light'] .pa-base {
 
 .pa-tip-a {
   left: 16%;
-  animation: pa-tip-a-3 5s linear infinite;
+  animation: pa-tip-a-3 8s linear infinite;
 }
 
 .pa-tip-b {
   left: 50%;
   margin-left: -36px;
-  animation: pa-tip-b-3 5s linear infinite;
+  animation: pa-tip-b-3 8s linear infinite;
 }
 
 .pa-tip-c {
   right: 8%;
-  animation: pa-tip-c-3 5s linear infinite;
+  animation: pa-tip-c-3 8s linear infinite;
 }
 
 .pricing-anim[data-pa-chips='2'] .pa-tip-a {
@@ -1077,117 +1224,196 @@ html[data-theme='light'] .pa-base {
   margin-left: -36px;
 }
 
-/* Tip A: visible only after first bar step lands */
+/* Each chip pops in right when the bar finishes that step, then holds visible
+ * through the rest of the cycle so the viewer sees the full crowd at unlock. */
 @keyframes pa-tip-a-3 {
-  0%,
-  20% {
+  0%, 13% {
     opacity: 0;
-    transform: translateY(7px) scale(0.88);
+    transform: translateY(10px) scale(0.85);
   }
-  23%,
-  35% {
+  16% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.08);
+  }
+  20%, 100% {
     opacity: 1;
     transform: translateY(0) scale(1);
-  }
-  39%,
-  100% {
-    opacity: 0;
-    transform: translateY(-5px) scale(0.9);
   }
 }
 
 @keyframes pa-tip-b-3 {
-  0%,
-  56% {
+  0%, 33% {
     opacity: 0;
-    transform: translateY(7px) scale(0.88);
+    transform: translateY(10px) scale(0.85);
   }
-  59%,
-  71% {
+  36% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.08);
+  }
+  40%, 100% {
     opacity: 1;
     transform: translateY(0) scale(1);
-  }
-  75%,
-  100% {
-    opacity: 0;
-    transform: translateY(-5px) scale(0.9);
   }
 }
 
 @keyframes pa-tip-c-3 {
-  0%,
-  92% {
+  0%, 58% {
     opacity: 0;
-    transform: translateY(7px) scale(0.88);
+    transform: translateY(10px) scale(0.85);
   }
-  95%,
-  99.5% {
+  61% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.08);
+  }
+  65%, 100% {
     opacity: 1;
     transform: translateY(0) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-5px) scale(0.9);
   }
 }
 
 @keyframes pa-tip-a-2 {
-  0%,
-  20% {
+  0%, 18% {
     opacity: 0;
-    transform: translateY(7px) scale(0.88);
+    transform: translateY(10px) scale(0.85);
   }
-  24%,
-  36% {
+  21% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.08);
+  }
+  25%, 100% {
     opacity: 1;
     transform: translateY(0) scale(1);
-  }
-  40%,
-  100% {
-    opacity: 0;
-    transform: translateY(-5px) scale(0.9);
   }
 }
 
 @keyframes pa-tip-b-2 {
-  0%,
-  90% {
+  0%, 58% {
     opacity: 0;
-    transform: translateY(7px) scale(0.88);
+    transform: translateY(10px) scale(0.85);
   }
-  93%,
-  99.5% {
+  61% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.08);
+  }
+  65%, 100% {
     opacity: 1;
     transform: translateY(0) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-5px) scale(0.9);
   }
 }
 
 @keyframes pa-tip-a-1 {
-  0%,
-  91% {
+  0%, 58% {
     opacity: 0;
-    transform: translateY(7px) scale(0.88);
+    transform: translateY(10px) scale(0.85);
   }
-  94%,
-  99.5% {
+  61% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.08);
+  }
+  65%, 100% {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
-  100% {
-    opacity: 0;
-    transform: translateY(-5px) scale(0.9);
-  }
+}
+
+/* ---------- pa: tiny "Director remote · locked → unlocked" indicator ---------- */
+
+.pa-remote-status {
+  position: relative;
+  margin-top: 14px;
+  height: 28px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.pa-remote-state {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  background: rgba(127, 127, 127, 0.06);
+  color: inherit;
+  opacity: 0.7;
+  width: max-content;
+  max-width: 100%;
+  animation: pa-remote-lock-3 8s linear infinite;
+}
+
+.pa-remote-state--unlocked {
+  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  opacity: 0;
+  animation-name: pa-remote-unlock-3;
+}
+
+.pa-remote-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.pricing-anim[data-pa-chips='2'] .pa-remote-state {
+  animation-name: pa-remote-lock-2;
+}
+
+.pricing-anim[data-pa-chips='2'] .pa-remote-state--unlocked {
+  animation-name: pa-remote-unlock-2;
+}
+
+.pricing-anim[data-pa-chips='1'] .pa-remote-state {
+  animation-name: pa-remote-lock-1;
+}
+
+.pricing-anim[data-pa-chips='1'] .pa-remote-state--unlocked {
+  animation-name: pa-remote-unlock-1;
+}
+
+/* Locked stays visible while the bar climbs; unlocked flips on when the bar
+ * hits 100% (~62%) and holds until the cycle restarts — gives the viewer
+ * ~3 seconds to register the payoff. */
+@keyframes pa-remote-lock-3 {
+  0%, 58% { opacity: 0.7; }
+  62%, 100% { opacity: 0; }
+}
+
+@keyframes pa-remote-unlock-3 {
+  0%, 58% { opacity: 0; }
+  62%, 100% { opacity: 1; }
+}
+
+@keyframes pa-remote-lock-2 {
+  0%, 58% { opacity: 0.7; }
+  62%, 100% { opacity: 0; }
+}
+
+@keyframes pa-remote-unlock-2 {
+  0%, 58% { opacity: 0; }
+  62%, 100% { opacity: 1; }
+}
+
+@keyframes pa-remote-lock-1 {
+  0%, 58% { opacity: 0.7; }
+  62%, 100% { opacity: 0; }
+}
+
+@keyframes pa-remote-unlock-1 {
+  0%, 58% { opacity: 0; }
+  62%, 100% { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .pa-bar-fill,
   .pa-director,
   .pa-flat,
-  .pa-tip {
+  .pa-tip,
+  .pa-remote-state {
     animation: none !important;
   }
 
@@ -1202,4 +1428,7 @@ html[data-theme='light'] .pa-base {
   .pricing-anim[data-pa-chips='1'] .pa-bar-fill {
     width: 100%;
   }
+
+  .pa-remote-state--locked { opacity: 0; }
+  .pa-remote-state--unlocked { opacity: 1; }
 }

@@ -18,9 +18,9 @@ export type DirectorSettings = {
 export const DEFAULT_SETTINGS: DirectorSettings = {
   tipMenuMarkupPercent: 10,
   preproductionGoal: 50,
-  overtakeMargin: 10,
+  overtakeMargin: 50,
   minTenureSec: 15,
-  commandDurationSec: 20,
+  commandDurationSec: 10,
   commandCooldownSec: 6,
   commandCostTokens: 1,
 };
@@ -47,7 +47,7 @@ export const normalizeSettings = (raw: unknown): DirectorSettings => {
     tipMenuMarkupPercent: toInt(
       input.tipMenuMarkupPercent,
       DEFAULT_SETTINGS.tipMenuMarkupPercent,
-      { min: 0, max: 200 },
+      { min: 0, max: 1000 },
     ),
     preproductionGoal: toInt(input.preproductionGoal, DEFAULT_SETTINGS.preproductionGoal, {
       min: 10,

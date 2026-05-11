@@ -4,108 +4,47 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { COMMAND_GROUPS } from '../../shared/commands';
 import { DEFAULT_SETTINGS, normalizeSettings, type DirectorSettings } from '../../shared/settings';
+import {
+  GOAL_FIELD as PREPRODUCTION_FIELD,
+  MARKUP_FIELD,
+  REMOTE_FIELDS,
+  SPOTLIGHT_FIELDS,
+  type SettingsFieldDef,
+  type SettingsFieldKey as FieldKey,
+} from '../../shared/settingsFields';
 import { UNLOCK_DEMO_NAMES, chipDemoFromTotal } from '../../shared/unlockDemoChips';
 import { applyMarkupToMenu, tipMenuToItems, type DirectorMenuItem } from '../../shared/state';
 
 const ext = createExtHelper();
 
-type FieldKey = keyof DirectorSettings;
-
-type FieldDef = {
-  key: FieldKey;
-  label: string;
-  hint: string;
-  min: number;
-  /** Optional upper cap. Omit for "no maximum". */
-  max?: number;
-  unit: 'tk' | 'sec' | '%';
-};
-
 type FieldGroup = {
   id: string;
   title: string;
-  /** Optional; omit for title-only sections. */
-  intro?: string;
-  fields: FieldDef[];
+  fields: SettingsFieldDef[];
   preview?: 'cost' | 'protection';
-};
-
-const PREPRODUCTION_FIELD: FieldDef = {
-  key: 'preproductionGoal',
-  label: 'Tokens to go live',
-  hint: 'Room tips on menu lines stack until this total unlocks the show and Director seat.',
-  min: 10,
-  unit: 'tk',
-};
-
-/** Only when `v1.tipMenu.get` returns enabled lines — models without a tip menu never see this. */
-const MARKUP_FIELD: FieldDef = {
-  key: 'tipMenuMarkupPercent',
-  label: 'Markup on each menu line',
-  hint: 'e.g. 10% on 50 tk → 55 tk shown on stage.',
-  min: 0,
-  max: 200,
-  unit: '%',
 };
 
 const GROUPS: FieldGroup[] = [
   {
     id: 'control',
-    title: '2 · Director remote',
+    title: 'Remote',
     preview: 'cost',
-    fields: [
-      {
-        key: 'commandCostTokens',
-        label: 'Cost per command press',
-        hint: 'What the Director pays each time they send an action from the remote.',
-        min: 1,
-        max: 100,
-        unit: 'tk',
-      },
-      {
-        key: 'commandDurationSec',
-        label: 'Approximate duration of each command',
-        hint: 'Roughly how long you stay in the requested vibe before moving on.',
-        min: 5,
-        max: 300,
-        unit: 'sec',
-      },
-      {
-        key: 'commandCooldownSec',
-        label: 'Pause before the same command repeats',
-        hint: 'Stops viewers from spamming the same command back-to-back.',
-        min: 1,
-        max: 120,
-        unit: 'sec',
-      },
-    ],
+    fields: REMOTE_FIELDS,
   },
   {
     id: 'race',
-    title: '3 · Spotlight chase',
+    title: 'Director Seat',
     preview: 'protection',
-    fields: [
-      {
-        key: 'overtakeMargin',
-        label: 'Tokens required to overtake the Director',
-        hint: 'A chasing viewer needs this many tokens above the Director\u2019s total to take the seat.',
-        min: 1,
-        max: 1_000,
-        unit: 'tk',
-      },
-      {
-        key: 'minTenureSec',
-        label: 'Director protection',
-        hint: 'After someone becomes Director they cannot be replaced for this long. Everyone sees the countdown.',
-        min: 5,
-        max: 600,
-        unit: 'sec',
-      },
-    ],
+    fields: SPOTLIGHT_FIELDS,
   },
 ];
 
-const ALL_FIELDS: FieldDef[] = [PREPRODUCTION_FIELD, MARKUP_FIELD, ...GROUPS.flatMap((g) => g.fields)];
+const ALL_FIELDS: SettingsFieldDef[] = [
+  PREPRODUCTION_FIELD,
+  MARKUP_FIELD,
+  ...REMOTE_FIELDS,
+  ...SPOTLIGHT_FIELDS,
+];
 
 const toForm = (settings: DirectorSettings): Record<FieldKey, string> => ({
   tipMenuMarkupPercent: String(settings.tipMenuMarkupPercent),
@@ -231,6 +170,11 @@ export const App = () => {
 
   return (
     <div class="settings-shell">
+      <header class="settings-brand">
+        <span class="settings-brand-name">Director</span>
+        <span class="settings-brand-tag">by Stripchat</span>
+      </header>
+
       {!loaded && <div class="banner">Loading…</div>}
 
       <HowItWorks
@@ -246,7 +190,6 @@ export const App = () => {
         <section class="settings-section" key={group.id}>
           <header class="settings-section-head">
             <h2>{group.title}</h2>
-            {group.intro ? <p>{group.intro}</p> : null}
           </header>
 
           {group.preview === 'cost' && (
@@ -324,45 +267,57 @@ const HowItWorks = ({
     : 'House tally before going live. Viewers fill the bar in the slot.';
 
   const renderChipBar = (tipA: number, tipB: number, tipC: number) => (
-    <div class="pa-bar-wrap">
-      <div class="pa-bar">
-        <div class="pa-bar-fill" />
+    <>
+      <div class="pa-bar-wrap">
+        <div class="pa-bar">
+          <div class="pa-bar-fill" />
+        </div>
+        <span class="pa-tip pa-tip-a">
+          <span class="pa-tip-nick">{UNLOCK_DEMO_NAMES[0]}</span>
+          <span class="pa-tip-amt">+{tipA}</span>
+        </span>
+        {tipB > 0 ? (
+          <span class="pa-tip pa-tip-b">
+            <span class="pa-tip-nick">{UNLOCK_DEMO_NAMES[1]}</span>
+            <span class="pa-tip-amt">+{tipB}</span>
+          </span>
+        ) : null}
+        {tipC > 0 ? (
+          <span class="pa-tip pa-tip-c">
+            <span class="pa-tip-nick">{UNLOCK_DEMO_NAMES[2]}</span>
+            <span class="pa-tip-amt">+{tipC}</span>
+          </span>
+        ) : null}
       </div>
-      <span class="pa-tip pa-tip-a">
-        <span class="pa-tip-nick">{UNLOCK_DEMO_NAMES[0]}</span>
-        <span class="pa-tip-amt">+{tipA}</span>
-      </span>
-      {tipB > 0 ? (
-        <span class="pa-tip pa-tip-b">
-          <span class="pa-tip-nick">{UNLOCK_DEMO_NAMES[1]}</span>
-          <span class="pa-tip-amt">+{tipB}</span>
+      <div class="pa-remote-status" aria-hidden="true">
+        <span class="pa-remote-state pa-remote-state--locked">
+          <span class="pa-remote-icon">🔒</span>
+          <span>Director remote · locked</span>
         </span>
-      ) : null}
-      {tipC > 0 ? (
-        <span class="pa-tip pa-tip-c">
-          <span class="pa-tip-nick">{UNLOCK_DEMO_NAMES[2]}</span>
-          <span class="pa-tip-amt">+{tipC}</span>
+        <span class="pa-remote-state pa-remote-state--unlocked">
+          <span class="pa-remote-icon">🔓</span>
+          <span>Director remote · unlocked</span>
         </span>
-      ) : null}
-    </div>
+      </div>
+    </>
   );
 
   return (
     <section class="settings-section">
       <header class="settings-section-head">
-        <h2>{hasTipMenu ? '1 · Go live & menu pricing' : '1 · Unlock the show'}</h2>
+        <h2>Goal</h2>
       </header>
 
       {hasTipMenu ? (
         <p class="sr-only">
           Different viewers can send partial tips toward the same menu line until the on-stream price
           is met. Markup adds to your menu prices; at 0% prices match your tip menu. When the room
-          reaches your token goal, the show goes live and someone becomes Director.
+          reaches your token goal, Director Control unlocks and someone becomes Director.
         </p>
       ) : (
         <p class="sr-only">
           Illustration: several viewers send partial tips; each contribution stacks toward the same
-          unlock total until the show goes live.
+          unlock total until Director Control unlocks.
         </p>
       )}
 
@@ -481,7 +436,7 @@ const RemoteControlPreview = ({
       <div class="deck-preview" aria-hidden="true">
         <div class="deck-remote">
           <div class="deck-top">
-            <span class="deck-brand">by Stripchat</span>
+            <span class="deck-brand">Stripchat</span>
             <span class="deck-rec deck-rec--on">
               <span class="deck-led" />
               Live
@@ -506,7 +461,7 @@ const RemoteControlPreview = ({
 
           <div class="deck-grid">
             {DECK_DEMO_COMMANDS.map((cmd) => {
-              const onCd = cmd.id === 'sound_whisper';
+              const onCd = cmd.id === 'sound_silence';
               return (
                 <button
                   type="button"
@@ -556,17 +511,23 @@ const RaceBoardPreview = ({ margin, tenure }: { margin: number; tenure: number }
             <span class="race-tk">{chaseTk} tk</span>
           </div>
         </div>
-        <div class="race-pressure">
-          <div class="race-pressure-track">
+        <div class="race-meter">
+          <div class="race-meter-label">
+            <span>Gap to overtake</span>
+            <span>+{m} tk</span>
+          </div>
+          <div class="race-meter-bar">
             <span style={{ width: `${chasePct}%` }} />
           </div>
-          <span class="race-gap-num">+{m} tk</span>
         </div>
-        <div class="race-shield">
-          <div class="race-shield-track">
+        <div class="race-meter">
+          <div class="race-meter-label">
+            <span>Director protection</span>
+            <span>0:{String(Math.max(0, tenure)).padStart(2, '0')}</span>
+          </div>
+          <div class="race-meter-bar race-meter-bar--shield">
             <span style={{ width: `${shieldPct}%` }} />
           </div>
-          <span class="race-shield-time">0:{String(Math.max(0, tenure)).padStart(2, '0')}</span>
         </div>
       </div>
     </>

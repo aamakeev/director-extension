@@ -1,12 +1,16 @@
 {
   "version": "v2.0",
   "views": {
-    "slots": ["mainGameFun", "background", "rightOverlay"],
+    "slots": [
+      "EXTENSION_SLOT_MAIN_GAME_FUN",
+      "EXTENSION_SLOT_BACKGROUND",
+      "EXTENSION_SLOT_VIDEO_DECORATIVE_OVERLAY"
+    ],
     "pages": {
       "mainGameFun": "mainGameFun.html",
       "backgroundModel": "backgroundModel.html",
       "backgroundViewer": "backgroundViewer.html",
-      "rightOverlay": "rightOverlay.html"
+      "videoDecorativeOverlay": "videoDecorativeOverlay.html"
     },
     "settings": "settings.html",
     "resolveSlotPageScript": "resolveSlotPage.js"

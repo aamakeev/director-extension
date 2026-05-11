@@ -216,3 +216,73 @@ html[data-theme='light'] .pg-stage--settings {
   max-width: none;
   padding: 0;
 }
+
+/* ---------- stream slot: stream area + tab side-by-side ---------- */
+
+.pg-stage--stream {
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+  background: #1a1a1d;
+}
+
+.pg-stage--stream .pg-stage-frame {
+  max-width: none;
+  width: 100%;
+  height: 100%;
+}
+
+.pg-stream-frame {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+}
+
+.pg-stream-overlay {
+  position: relative;
+  overflow: hidden;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.pg-stream-overlay--bg-stream {
+  background:
+    radial-gradient(60% 80% at 30% 50%, rgba(201, 122, 58, 0.18), transparent 70%),
+    url('https://picsum.photos/seed/director-stream/1200/800') center/cover no-repeat,
+    #1a1a1d;
+}
+
+.pg-stream-overlay--bg-dark {
+  background: #1a1a1d;
+}
+
+.pg-stream-overlay--bg-light {
+  background: #f7f7f5;
+}
+
+.pg-stream-tab {
+  background: #262626;
+  overflow: auto;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme='light'] .pg-stream-tab {
+  background: #f7f7f5;
+  border-left-color: rgba(0, 0, 0, 0.08);
+}
+
+@media (max-width: 880px) {
+  .pg-stream-frame {
+    grid-template-columns: 1fr;
+    grid-template-rows: 220px 1fr;
+  }
+  .pg-stream-overlay {
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .pg-stream-tab {
+    border-left: none;
+  }
+}

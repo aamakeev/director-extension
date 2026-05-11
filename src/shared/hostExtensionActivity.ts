@@ -11,22 +11,37 @@ type ExtLike = {
 
 export const createHostActivitySlot = (): HostActivitySlot => ({ meta: null });
 
-/** Durations aligned with what each broadcast represents on stream (SDK: `v1.ext.activity.request`). */
+/**
+ * Durations aligned with the on-stream notice display time. We keep them
+ * tight so the decorative-overlay iframe doesn't stay mounted past the
+ * visible notice — otherwise host activity persists silently for tens of
+ * seconds (especially on the long control_unlock window) and viewers see
+ * the slot consumed without anything visible there.
+ */
 export const durationMsForDirectorActivity = (
   kind: DirectorActivityKind,
   commandDurationSec: number,
 ): number => {
   switch (kind) {
     case 'menu_goal_complete':
-      return 8_000;
+      return 12_000;
     case 'control_unlock':
-      return 35_000;
+      return 10_000;
     case 'command_start': {
+      // Cue duration = how long the model performs the command on stream;
+      // the slot stays granted for the entirety of that window.
       const sec = Math.max(3, Math.min(300, Math.floor(commandDurationSec)));
       return sec * 1000;
     }
+    case 'chair_chase_takeover':
+      return 7_000;
+    case 'tip_received':
+      return 4_500;
+    case 'game_started':
+    case 'game_paused':
+      return 6_000;
     default:
-      return 10_000;
+      return 8_000;
   }
 };
 
@@ -52,6 +67,8 @@ export const claimHostActivityForEvent = async (
   commandDurationSec: number,
   reportError: (message: string, data: unknown) => void,
 ): Promise<void> => {
+  // Per-tip pulses must not preempt a live command segment — keep the larger event on screen.
+  if (kind === 'tip_received' && slot.meta && slot.meta.kind !== 'tip_received') return;
   await clearHostActivity(ext, slot);
   const durationMs = durationMsForDirectorActivity(kind, commandDurationSec);
   try {

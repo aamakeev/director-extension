@@ -8,9 +8,9 @@ export default function resolveSlotPage(slotType, context) {
   switch (slotType) {
     case 'EXTENSION_SLOT_MAIN_GAME_FUN':
       return 'mainGameFun';
-    case 'EXTENSION_SLOT_RIGHT_OVERLAY':
-      if (isModel) return null;
-      return 'rightOverlay';
+    case 'EXTENSION_SLOT_VIDEO_DECORATIVE_OVERLAY':
+      // Shared, ephemeral activity badge channel — same page for every role.
+      return 'videoDecorativeOverlay';
     case 'EXTENSION_SLOT_BACKGROUND':
       if (isGuest) return null;
       if (isModel) return 'backgroundModel';

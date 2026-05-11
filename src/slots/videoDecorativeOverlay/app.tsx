@@ -1,399 +1,377 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 
-import { COMMAND_GROUPS } from '../../shared/commands';
-import { chairCatchUpTokens } from '../../shared/chairBite';
 import { formatRemaining } from '../../shared/format';
-import { resolveRole, userIdString, usernameString, whisperSelfId } from '../../shared/role';
-import { directorExt, useDirectorClient } from '../../shared/useDirectorState';
-import type { DirectorPublicState } from '../../shared/state';
+import { resolveRole } from '../../shared/role';
+import { useDirectorClient } from '../../shared/useDirectorState';
+import type { DirectorActivityBroadcast } from '../../shared/state';
+
+/**
+ * Two overlay surfaces:
+ *   - HERO (model only): full-width spotlight in the top 1/3 for milestone
+ *     events that demand attention or a physical response.
+ *   - NOTICE (everyone): compact pill in the top-right corner for everything
+ *     else — and the only surface viewers ever see.
+ */
+const MODEL_HERO_KINDS = new Set<DirectorActivityBroadcast['kind']>([
+  'control_unlock',
+  'command_start',
+  'menu_goal_complete',
+  'chair_chase_takeover',
+]);
+const MODEL_NOTICE_KINDS = new Set<DirectorActivityBroadcast['kind']>([
+  'tip_received',
+]);
+
+/** Hero kinds that carry a meaningful countdown (the cue / performance window). */
+const HERO_TIMER_KINDS = new Set<DirectorActivityBroadcast['kind']>([
+  'command_start',
+  'menu_goal_complete',
+]);
+
+/** Viewers see everything as a compact corner notice. */
+const VIEWER_NOTICE_KINDS = new Set<DirectorActivityBroadcast['kind']>([
+  'menu_goal_complete',
+  'command_start',
+  'chair_chase_takeover',
+  'tip_received',
+  'control_unlock',
+  'game_started',
+  'game_paused',
+]);
+
+const DURATION_MS: Partial<Record<DirectorActivityBroadcast['kind'], number>> = {
+  tip_received: 4_500,
+  chair_chase_takeover: 6_000,
+  command_start: 10_000,
+  menu_goal_complete: 12_000,
+  control_unlock: 10_000,
+  game_started: 6_000,
+  game_paused: 6_000,
+};
+const DEFAULT_DURATION_MS = 6_000;
+
+const durationFor = (a: DirectorActivityBroadcast): number =>
+  a.durationMs ?? DURATION_MS[a.kind] ?? DEFAULT_DURATION_MS;
 
 export const App = () => {
-  const { context, state, selfAllocations, pushToast, activityInbox } = useDirectorClient();
-  const [, setTick] = useState(0);
-  const [cmdBusy, setCmdBusy] = useState<string>('');
-  const [biteBusy, setBiteBusy] = useState(false);
-  const [actFlash, setActFlash] = useState(false);
-  const lastActId = useRef<string>('');
+  const { activityInbox, context } = useDirectorClient();
+  const isModel = resolveRole(context) === 'model';
+  return isModel ? (
+    <ModelOverlay activityInbox={activityInbox} />
+  ) : (
+    <ViewerOverlay activityInbox={activityInbox} />
+  );
+};
+
+/* ---------- Viewer overlay: single compact notice for every kind ---------- */
+
+const ViewerOverlay = ({
+  activityInbox,
+}: {
+  activityInbox: DirectorActivityBroadcast[];
+}) => {
+  const [now, setNow] = useState(() => Date.now());
+
+  const active = useMemo(() => {
+    for (let i = activityInbox.length - 1; i >= 0; i -= 1) {
+      const a = activityInbox[i]!;
+      if (!VIEWER_NOTICE_KINDS.has(a.kind)) continue;
+      if (a.at + durationFor(a) > now) return a;
+    }
+    return null;
+  }, [activityInbox, now]);
 
   useEffect(() => {
-    const last = activityInbox[activityInbox.length - 1];
-    if (!last || last.id === lastActId.current) return;
-    lastActId.current = last.id;
-    setActFlash(true);
-    const t = window.setTimeout(() => setActFlash(false), 640);
-    return () => window.clearTimeout(t);
+    if (!active) return undefined;
+    // 250ms tick so the notice countdown ticks smoothly.
+    const id = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, [active]);
+
+  useEffect(() => {
+    setNow(Date.now());
   }, [activityInbox]);
 
-  useEffect(() => {
-    const id = setInterval(() => setTick((n) => (n + 1) % 1_000_000), 500);
-    return () => clearInterval(id);
-  }, []);
-
-  if (!state) {
-    return (
-      <div class="overlay-shell">
-        <div class={`remote${actFlash ? ' is-activity-flash' : ''}`}>
-          <div class="remote-top">
-            <span class="remote-brand">by Stripchat</span>
-            <span class="remote-rec">
-              <span class="led" />
-              SYNC
-            </span>
-          </div>
-          <div class="remote-screen">
-            <span class="screen-label">Status</span>
-            <span class="screen-empty">Connecting…</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const meId = userIdString(context.user);
-  const selfWhisperId = whisperSelfId(context.user);
-  const meName = usernameString(context.user);
-  const role = resolveRole(context);
-  const isModel = role === 'model';
-  const isGuest = role === 'guest';
-  const isDirector = Boolean(
-    state.isLive && state.director?.id && String(state.director.id) === String(selfWhisperId),
-  );
-  const leadIsYou = Boolean(
-    state.isLive &&
-      state.director.id &&
-      selfWhisperId &&
-      String(state.director.id) === String(selfWhisperId),
-  );
-  const canControl = isDirector && state.isLive && !isModel && !isGuest;
-
-  const sessionPercent = Math.min(
-    100,
-    (state.totalSessionTips / Math.max(1, state.preproductionGoal)) * 100,
-  );
-  const pressurePercent = Math.max(2, state.pressure.percent);
-  const current = state.currentPerformance;
-  const remaining = current ? Math.max(0, current.endsAt - Date.now()) : 0;
-
-  const tenureActive =
-    state.isLive && Boolean(state.director.id) && state.directorTenureLeftMs > 0;
-  const openChairRace =
-    state.isLive && Boolean(state.director.id) && !state.directorTenureLeftMs;
-  const biteNeed =
-    openChairRace && !isGuest && !isDirector && !isModel
-      ? chairCatchUpTokens(
-          state.director.total,
-          state.overtakeMargin,
-          selfAllocations.total,
-        )
-      : 0;
-  const chairFromZero =
-    openChairRace && !isModel
-      ? chairCatchUpTokens(state.director.total, state.overtakeMargin, 0)
-      : 0;
-  const shieldPct = state.directorTenureLeftMs
-    ? Math.max(
-        2,
-        Math.min(
-          100,
-          (state.directorTenureLeftMs / Math.max(1, state.minTenureSec * 1000)) * 100,
-        ),
-      )
-    : 0;
-
-  const suppressChallengerMeter =
-    openChairRace && !isGuest && !isDirector && !isModel && biteNeed > 0;
-
-  const showOpenSeatPanel =
-    openChairRace &&
-    ((isGuest && chairFromZero > 0) ||
-      (!isGuest && !isDirector && biteNeed > 0) ||
-      (!isGuest && isDirector));
-
-  const sendCommand = async (commandId: string) => {
-    if (!canControl || cmdBusy || !meId) return;
-    setCmdBusy(commandId);
-    try {
-      await directorExt.makeRequest('v1.payment.tokens.spend', {
-        tokensAmount: state.commandCostTokens,
-        tokensSpendData: {
-          kind: 'director.command.issue',
-          commandId,
-          userId: meId,
-          username: meName,
-        },
-      });
-    } catch (_err) {
-      pushToast({ tone: 'warn', message: 'Payment cancelled' });
-    } finally {
-      setCmdBusy('');
-    }
-  };
-
-  const openSignUp = () => {
-    void directorExt.makeRequest('v1.ext.signup.open', { type: 'user' }).catch(() => undefined);
-  };
-
-  const sendChairBite = async () => {
-    if (!state || !meId || isGuest || isModel || isDirector || biteBusy) return;
-    const n = chairCatchUpTokens(
-      state.director.total,
-      state.overtakeMargin,
-      selfAllocations.total,
-    );
-    if (n <= 0) return;
-    setBiteBusy(true);
-    try {
-      await directorExt.makeRequest('v1.payment.tokens.spend', {
-        tokensAmount: n,
-        tokensSpendData: {
-          kind: 'director.chair.chase',
-          userId: meId,
-          username: meName,
-        },
-      });
-    } catch (_err) {
-      pushToast({ tone: 'warn', message: 'Payment cancelled' });
-    } finally {
-      setBiteBusy(false);
-    }
-  };
-
+  if (!active) return null;
   return (
-      <div class="overlay-shell">
-        <div class={`remote${canControl ? ' is-armed' : ' is-locked'}${actFlash ? ' is-activity-flash' : ''}`}>
-        <div class="remote-top">
-          <span class="remote-brand">by Stripchat</span>
-          <span
-            class={`remote-rec${state.isLive && state.gameAccepting ? ' is-on' : ''}${!state.gameAccepting ? ' is-paused' : ''}`}
-          >
-            <span class="led" />
-            {!state.gameAccepting ? 'Paused' : state.isLive ? 'Live' : 'Not live yet'}
-          </span>
-        </div>
-
-        <div class="remote-screen">
-          {isModel ? (
-            <ModelScreen state={state} />
-          ) : !state.gameAccepting ? (
-            <>
-              <span class="screen-label">Paused</span>
-              <span class="screen-line">Broadcaster paused Director unlock</span>
-              <span class="screen-sub">Tips on menu lines still stack.</span>
-            </>
-          ) : current ? (
-            <>
-              <span class="screen-label">Happening now</span>
-              <span class="screen-line">
-                <span class="emoji">{current.emoji}</span>
-                <span>{current.label}</span>
-                <span class="screen-countdown">{formatRemaining(remaining)}</span>
-              </span>
-              <span class="screen-sub">by {current.issuedByName}</span>
-            </>
-          ) : state.isLive ? (
-            isDirector ? (
-              <>
-                <span class="screen-label">Your turn</span>
-                <span class="screen-line">Pick what happens next — tap an action below</span>
-              </>
-            ) : (
-              <>
-                <span class="screen-label">Live</span>
-                <span class="screen-line">
-                  {state.director.id
-                    ? `${state.director.name} has the remote — hang tight for their pick`
-                    : 'Waiting for someone to take the remote'}
-                </span>
-              </>
-            )
-          ) : (
-            <>
-              <span class="screen-label">Unlock Director</span>
-              <span class="screen-line">
-                {state.totalSessionTips}
-                <span class="screen-sub">/ {state.preproductionGoal} tk</span>
-              </span>
-              <span class="screen-sub">Tip the menu until the room hits the goal — then someone becomes Director</span>
-            </>
-          )}
-        </div>
-
-        {!state.isLive && state.gameAccepting && (
-          <div class="remote-meter">
-            <div class="meter-label">
-              <span>{isModel ? 'Unlock target' : 'Unlock'}</span>
-              <span>{Math.round(sessionPercent)}%</span>
-            </div>
-            <div class="meter-bar">
-              <span style={{ width: `${sessionPercent}%` }} />
-            </div>
-          </div>
-        )}
-
-        {state.isLive && state.director.id && (
-          <div class={`remote-screen remote-screen--director${leadIsYou ? ' remote-screen--director-self' : ''}`}>
-            <span class="screen-label">Now steering</span>
-            <span class="screen-line">
-              <span class="emoji" aria-hidden="true">
-                🎬
-              </span>
-              <span class="screen-director-name">{state.director.name}</span>
-              <span>· {state.director.total} tk</span>
-            </span>
-            {leadIsYou ? (
-              <span class="screen-sub">You spent {selfAllocations.total} tk</span>
-            ) : null}
-          </div>
-        )}
-
-        {tenureActive && !isModel && (
-          <div class="remote-meter remote-meter--shield">
-            <div class="meter-label">
-              <span>Director safe</span>
-              <span>{formatRemaining(state.directorTenureLeftMs)}</span>
-            </div>
-            <div class="meter-bar meter-bar--shield">
-              <span style={{ width: `${shieldPct}%` }} />
-            </div>
-          </div>
-        )}
-
-        {showOpenSeatPanel ? (
-          <div class="remote-open-seat">
-            {isGuest && chairFromZero > 0 ? (
-              <button type="button" class="bite-btn" onClick={openSignUp}>
-                Sign in · {chairFromZero} tk
-              </button>
-            ) : !isGuest && !isDirector && biteNeed > 0 ? (
-              <button
-                type="button"
-                class="bite-btn bite-btn--cta"
-                disabled={biteBusy}
-                aria-label={`Pay ${biteNeed} tk to become Director`}
-                onClick={() => void sendChairBite()}
-              >
-                  {biteBusy ? '…' : `Become Director · ${biteNeed} tk`}
-              </button>
-            ) : !isGuest && isDirector ? (
-              <p class="open-seat-foot">You have the remote — pick an action below when you&apos;re ready.</p>
-            ) : null}
-          </div>
-        ) : null}
-
-        {/* ---------- Control pad (hidden for the model) ---------- */}
-        {!isModel && (
-        <div class="remote-pad">
-          <div class="pad-head">
-            {canControl ? (
-              <>
-                <span class="pad-title">Actions</span>
-                <span class="pad-cost">{state.commandCostTokens} tk each</span>
-              </>
-            ) : (
-              <>
-                <span class="pad-title">
-                  <span class="lock">🔒</span> Locked
-                </span>
-                <span class="pad-cost">
-                  {!state.gameAccepting
-                    ? 'Waiting for broadcaster to start'
-                    : !state.isLive
-                    ? 'Starts when the show goes live'
-                    : isModel
-                      ? 'Only viewers use this remote'
-                      : 'Become Director to give orders'}
-                </span>
-              </>
-            )}
-          </div>
-
-          <div class={`pad-grid${canControl ? '' : ' is-disabled'}`}>
-            {COMMAND_GROUPS.flatMap((group) => group.commands).map((cmd) => {
-              const cdMs = state.commandCooldowns[cmd.id] ?? 0;
-              const cdSec = Math.ceil(cdMs / 1000);
-              const disabled = !canControl || cdSec > 0 || cmdBusy === cmd.id;
-              return (
-                <button
-                  type="button"
-                  class="pad-key"
-                  key={cmd.id}
-                  disabled={disabled}
-                  onClick={() => sendCommand(cmd.id)}
-                  aria-label={cmd.label}
-                  title={cmd.label}
-                >
-                  <span class="pad-key-emoji">{cmd.emoji}</span>
-                  <span class="pad-key-label">{cmd.label}</span>
-                  {cdSec > 0 ? <span class="pad-key-cd">{cdSec}s</span> : null}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        )}
-
-        {state.isLive && state.challenger.id && !suppressChallengerMeter ? (
-          <div class="remote-meter remote-meter--bottom">
-            <div class="meter-label">
-              <span>{state.challenger.name}</span>
-              <span>
-                {state.pressure.isCritical
-                  ? `−${state.pressure.neededToOvertake}`
-                  : `${state.pressure.neededToOvertake} tk`}
-              </span>
-            </div>
-            <div
-              class={`meter-bar is-pressure${state.pressure.isCritical ? ' is-critical' : ''}`}
-            >
-              <span style={{ width: `${pressurePercent}%` }} />
-            </div>
-          </div>
-        ) : null}
-      </div>
+    <div class="overlay-shell overlay-shell--notice">
+      <ActivityNoticePill a={active} now={now} />
     </div>
   );
 };
 
-const ModelScreen = ({ state }: { state: DirectorPublicState }) => {
-  if (!state.isLive) {
-    return (
-      <>
-        <span class="screen-label">Unlock Director</span>
-        <span class="screen-line">
-          {state.totalSessionTips}
-          <span class="screen-sub">/ {state.preproductionGoal} tk</span>
-        </span>
-        <span class="screen-sub">Tips below fill the bar — then the room goes live</span>
-      </>
-    );
-  }
-  if (!state.director.id) {
-    return (
-      <>
-        <span class="screen-label">Live — no Director yet</span>
-        <span class="screen-line">Waiting for someone to take the seat</span>
-      </>
-    );
-  }
-  const tenureLeft = state.directorTenureLeftMs > 0;
-  if (tenureLeft) {
-    return (
-      <>
-        <span class="screen-label">Director safe</span>
-        <span class="screen-line">{formatRemaining(state.directorTenureLeftMs)}</span>
-      </>
-    );
-  }
-  const contestOpen =
-    state.isLive && Boolean(state.director.id) && !state.directorTenureLeftMs;
+/* ---------- Model overlay: hero + notice, can co-exist ---------- */
+
+const ModelOverlay = ({
+  activityInbox,
+}: {
+  activityInbox: DirectorActivityBroadcast[];
+}) => {
+  const [now, setNow] = useState(() => Date.now());
+
+  const activeHero = useMemo(() => {
+    for (let i = activityInbox.length - 1; i >= 0; i -= 1) {
+      const a = activityInbox[i]!;
+      if (!MODEL_HERO_KINDS.has(a.kind)) continue;
+      if (a.at + durationFor(a) > now) return a;
+    }
+    return null;
+  }, [activityInbox, now]);
+
+  const activeNotice = useMemo(() => {
+    for (let i = activityInbox.length - 1; i >= 0; i -= 1) {
+      const a = activityInbox[i]!;
+      if (!MODEL_NOTICE_KINDS.has(a.kind)) continue;
+      if (a.at + durationFor(a) > now) return a;
+    }
+    return null;
+  }, [activityInbox, now]);
+
+  // The tip that fills a menu line fires both `tip_received` and
+  // `menu_goal_complete` back-to-back. Suppress the tip notice so the model
+  // only sees the actionable hero ("Perform Cum") instead of two stacked
+  // banners about the same event.
+  const suppressNotice =
+    activeHero?.kind === 'menu_goal_complete' && activeNotice?.kind === 'tip_received';
+  const noticeToRender = suppressNotice ? null : activeNotice;
+
+  useEffect(() => {
+    if (!activeHero && !activeNotice) return undefined;
+    // 250ms tick — both the hero countdown and the notice countdown need it.
+    const id = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, [activeHero, activeNotice]);
+
+  useEffect(() => {
+    setNow(Date.now());
+  }, [activityInbox]);
+
+  if (!activeHero && !noticeToRender) return null;
+
   return (
-    <>
-      <span class="screen-label">Director remote</span>
-      <span class="screen-line">
-        {contestOpen
-          ? 'Viewer can send new orders'
-          : 'Last order still playing'}
-      </span>
-    </>
+    <div class={`overlay-shell overlay-shell--hero${activeHero ? ' has-hero' : ''}`}>
+      {activeHero ? <HeroPanel a={activeHero} now={now} /> : null}
+      {noticeToRender ? <ActivityNoticePill a={noticeToRender} now={now} /> : null}
+    </div>
   );
+};
+
+const HeroPanel = ({ a, now }: { a: DirectorActivityBroadcast; now: number }) => {
+  const { kicker, kickerName, action, sub, emoji } = formatModelHero(a);
+  const showTimer = HERO_TIMER_KINDS.has(a.kind);
+  const remainingMs = showTimer ? Math.max(0, a.at + durationFor(a) - now) : 0;
+  const solo = a.kind === 'menu_goal_complete' && isSoloBuyer(a);
+  return (
+    <div
+      class={`model-hero model-hero--${a.kind}${solo ? ' model-hero--solo' : ''}`}
+      role="status"
+      aria-live="polite"
+    >
+      <div class="model-hero-top">
+        <div class="model-hero-kicker">
+          <span class="model-hero-dot" aria-hidden="true" />
+          <span class="model-hero-kicker-text">{kicker}</span>
+          {kickerName ? (
+            <>
+              <span class="model-hero-kicker-sep" aria-hidden="true">·</span>
+              <span class="model-hero-kicker-name">{kickerName}</span>
+            </>
+          ) : null}
+        </div>
+        {showTimer ? (
+          <div class="model-hero-timer" aria-label="Time remaining">
+            <span class="model-hero-timer-num">{formatRemaining(remainingMs)}</span>
+            <span class="model-hero-timer-label">left</span>
+          </div>
+        ) : null}
+      </div>
+      <div class="model-hero-action">
+        <span class="model-hero-emoji" aria-hidden="true">{emoji}</span>
+        <span class="model-hero-text">{action}</span>
+      </div>
+      {sub ? <div class="model-hero-sub">{sub}</div> : null}
+    </div>
+  );
+};
+
+const ActivityNoticePill = ({
+  a,
+  now,
+}: {
+  a: DirectorActivityBroadcast;
+  now: number;
+}) => {
+  const { emoji, primary, secondary } = formatNotice(a);
+  const solo = a.kind === 'menu_goal_complete' && isSoloBuyer(a);
+  // Timer only matters when the notice represents an in-progress on-stream
+  // window the viewer might want to track (cue countdown, menu line payoff).
+  // Tips, chair takeovers and lifecycle pings are point-in-time events — no
+  // countdown adds value, just clutter.
+  const showTimer = HERO_TIMER_KINDS.has(a.kind);
+  const remainingMs = showTimer ? Math.max(0, a.at + durationFor(a) - now) : 0;
+  return (
+    <div
+      class={`activity-notice activity-notice--${a.kind}${solo ? ' activity-notice--solo' : ''}`}
+      role="status"
+      aria-live="polite"
+    >
+      <span class="activity-notice-emoji" aria-hidden="true">{emoji}</span>
+      <div class="activity-notice-body">
+        <span class="activity-notice-primary">{primary}</span>
+        {secondary ? <span class="activity-notice-sub">{secondary}</span> : null}
+      </div>
+      {showTimer ? (
+        <span class="activity-notice-timer" aria-label="Time remaining">
+          {formatRemaining(remainingMs)}
+        </span>
+      ) : null}
+    </div>
+  );
+};
+
+/**
+ * `kickerName` is rendered in a separate span that opts out of the parent's
+ * `text-transform: uppercase`, so usernames keep their original case
+ * (e.g. "DIRECTOR CUE · rose_taker" instead of "DIRECTOR CUE · ROSE_TAKER").
+ */
+const formatModelHero = (
+  a: DirectorActivityBroadcast,
+): {
+  kicker: string;
+  kickerName: string | null;
+  action: string;
+  sub: string | null;
+  emoji: string;
+} => {
+  if (a.kind === 'command_start') {
+    return {
+      kicker: 'Director cue',
+      kickerName: a.issuedByName || null,
+      action: a.label || 'Cue',
+      sub: null,
+      emoji: a.emoji || '🎬',
+    };
+  }
+  if (a.kind === 'menu_goal_complete') {
+    const solo = isSoloBuyer(a);
+    if (solo) {
+      return {
+        kicker: 'Bought',
+        kickerName: solo.name,
+        action: a.itemTitle || 'Perform',
+        sub: a.price ? `${a.price} tk · solo buy` : 'solo buy',
+        emoji: '🏆',
+      };
+    }
+    return {
+      kicker: 'Room filled',
+      kickerName: null,
+      action: a.itemTitle || 'Perform',
+      sub: a.price ? `${a.price} tk paid` : null,
+      emoji: '✓',
+    };
+  }
+  if (a.kind === 'control_unlock') {
+    return {
+      kicker: 'Director Control unlocked',
+      kickerName: null,
+      action: a.directorName ? `Director · ${a.directorName}` : 'Director seat live',
+      sub: null,
+      emoji: '🔓',
+    };
+  }
+  if (a.kind === 'chair_chase_takeover') {
+    return {
+      kicker: 'New Director',
+      kickerName: null,
+      action: a.issuedByName || 'Seat changed',
+      sub: 'Took the Director seat',
+      emoji: '🪑',
+    };
+  }
+  return { kicker: 'Activity', kickerName: null, action: '', sub: null, emoji: '•' };
+};
+
+const isSoloBuyer = (
+  a: DirectorActivityBroadcast,
+): { name: string } | null => {
+  if (a.kind !== 'menu_goal_complete') return null;
+  const contributors = a.contributors ?? [];
+  if (contributors.length !== 1) return null;
+  const c = contributors[0]!;
+  if (a.price && c.amount < a.price) return null;
+  return { name: c.name || 'Buyer' };
+};
+
+const formatNotice = (
+  a: DirectorActivityBroadcast,
+): { emoji: string; primary: string; secondary: string | null } => {
+  if (a.kind === 'menu_goal_complete') {
+    const solo = isSoloBuyer(a);
+    if (solo) {
+      return {
+        emoji: '🏆',
+        primary: `${solo.name} bought ${a.itemTitle ?? 'a menu line'}`,
+        secondary: a.price ? `${a.price} tk · Tip Menu` : 'Tip Menu',
+      };
+    }
+    return {
+      emoji: '✓',
+      primary: a.itemTitle ? `Room filled · ${a.itemTitle}` : 'Tip Menu filled',
+      secondary: a.price ? `${a.price} tk` : null,
+    };
+  }
+  if (a.kind === 'command_start') {
+    return {
+      emoji: a.emoji || '🎬',
+      primary: a.label || 'Director cue',
+      secondary: a.issuedByName ? `by ${a.issuedByName}` : null,
+    };
+  }
+  if (a.kind === 'chair_chase_takeover') {
+    return {
+      emoji: '🪑',
+      primary: a.issuedByName ? `${a.issuedByName} → Director` : 'New Director',
+      secondary: 'Seat changed',
+    };
+  }
+  if (a.kind === 'tip_received') {
+    const who = a.issuedByName || 'Viewer';
+    const amount = typeof a.amount === 'number' && a.amount > 0 ? `${a.amount} tk` : '';
+    const target = a.itemTitle ? ` → ${a.itemTitle}` : '';
+    const secondary = amount
+      ? `tipped ${amount}${target}`
+      : target
+        ? `tipped${target}`
+        : 'tipped';
+    return {
+      emoji: '💸',
+      primary: who,
+      secondary,
+    };
+  }
+  if (a.kind === 'control_unlock') {
+    return {
+      emoji: '🔓',
+      primary: 'Director Control unlocked',
+      secondary: a.directorName ? `Director: ${a.directorName}` : null,
+    };
+  }
+  if (a.kind === 'game_started') {
+    return {
+      emoji: '▶️',
+      primary: 'Director game started',
+      secondary: a.preproductionGoal
+        ? `Goal: ${a.preproductionGoal} tk`
+        : 'Tip the menu to unlock',
+    };
+  }
+  if (a.kind === 'game_paused') {
+    return {
+      emoji: '⏸️',
+      primary: 'Director game paused',
+      secondary: 'Tips still stack on each line',
+    };
+  }
+  return { emoji: '•', primary: 'Activity', secondary: null };
 };

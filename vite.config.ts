@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => {
               mainGameFun: resolve(__dirname, 'mainGameFun.html'),
               backgroundModel: resolve(__dirname, 'backgroundModel.html'),
               backgroundViewer: resolve(__dirname, 'backgroundViewer.html'),
-              rightOverlay: resolve(__dirname, 'rightOverlay.html'),
+              videoDecorativeOverlay: resolve(__dirname, 'videoDecorativeOverlay.html'),
               settings: resolve(__dirname, 'settings.html'),
             }) as Record<string, string>,
       },

@@ -29,6 +29,7 @@ export function AppSelect({
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const selected = options.find((o) => o.value === value) ?? options[0];
+  const displayLabel = selected?.label ?? (options.length > 0 ? 'Choose line' : 'No options');
 
   useEffect(() => {
     if (!open) return;
@@ -92,7 +93,7 @@ export function AppSelect({
         onClick={toggle}
         onKeyDown={onTriggerKeyDown}
       >
-        <span class="app-select__value">{selected?.label ?? ''}</span>
+        <span class={`app-select__value${selected ? '' : ' is-placeholder'}`}>{displayLabel}</span>
         <span class="app-select__chev" aria-hidden="true">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path

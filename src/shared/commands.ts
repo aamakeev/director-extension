@@ -24,13 +24,11 @@ export const COMMAND_GROUPS: DirectorCommandGroup[] = [
     emoji: '🎬',
     commands: [
       { id: 'visual_closeup', label: 'Close-up', emoji: '🔍' },
-      { id: 'visual_eyes', label: 'Eyes', emoji: '👁' },
+      { id: 'visual_eyes', label: 'Eyes Contact', emoji: '👁' },
       { id: 'tempo_slow', label: 'Slow', emoji: '🐌' },
-      { id: 'tempo_turbo', label: 'Fast', emoji: '⚡' },
-      { id: 'tempo_freeze', label: 'Hold', emoji: '🧊' },
-      { id: 'sound_whisper', label: 'Whisper', emoji: '🤫' },
-      { id: 'sound_dirty_talk', label: 'Heat', emoji: '🔥' },
-      { id: 'sound_silence', label: 'Quiet', emoji: '🤐' },
+      { id: 'tempo_freeze', label: 'Freeze', emoji: '🧊' },
+      { id: 'sound_silence', label: 'Quiet', emoji: '🤫' },
+      { id: 'mood_bad_girl', label: 'Bad Girl', emoji: '😈' },
     ],
   },
 ];

@@ -62,10 +62,52 @@ export const useDirectorClient = (): DirectorClient => {
       if (!isWhisperEnvelope(data)) return;
       if (data.type === 'director.state') {
         setState(data);
+        // Backfill the inbox from recentActivities so a freshly-mounted
+        // decorative iframe doesn't sit empty after missing the original
+        // broadcast.
+        const recent = (data as { recentActivities?: unknown }).recentActivities;
+        if (Array.isArray(recent) && recent.length) {
+          setActivityInbox((prev) => {
+            let next = prev;
+            let changed = false;
+            for (const raw of recent) {
+              if (!raw || typeof raw !== 'object') continue;
+              const a = raw as { id?: unknown };
+              if (typeof a.id !== 'string') continue;
+              const idx = next.findIndex((entry) => entry.id === a.id);
+              if (idx >= 0) {
+                const merged = { ...next[idx], ...(raw as object) };
+                if (!changed) {
+                  next = next.slice();
+                  changed = true;
+                }
+                next[idx] = merged as (typeof next)[number];
+              } else {
+                if (!changed) {
+                  next = next.slice();
+                  changed = true;
+                }
+                next.push(raw as (typeof next)[number]);
+              }
+            }
+            return changed ? next.slice(-16) : prev;
+          });
+        }
         return;
       }
       if (data.type === 'director.activity') {
-        setActivityInbox((prev) => [...prev, data].slice(-16));
+        setActivityInbox((prev) => {
+          // Merge by id so an optimistic local entry (e.g. tipper's own
+          // whisper.local with partial info) gets enriched once the model's
+          // canonical broadcast arrives.
+          const idx = prev.findIndex((a) => a.id === data.id);
+          if (idx >= 0) {
+            const next = prev.slice();
+            next[idx] = { ...prev[idx], ...data };
+            return next;
+          }
+          return [...prev, data].slice(-16);
+        });
         return;
       }
       const me = meRef.current;
@@ -89,6 +131,10 @@ export const useDirectorClient = (): DirectorClient => {
     };
 
     ext.subscribe('v1.ext.whispered', onWhispered);
+    // `v1.ext.whisper.local` doesn't echo back to the sender through the
+    // standard whispered channel, so we also listen on the local-only event
+    // (e.g. the tipper's own optimistic tip activity from viewerBackground).
+    ext.subscribe('v1.ext.whispered.local', onWhispered);
     ext.subscribe('v1.ext.context.updated', onContextUpdated);
 
     const requestState = () => {
@@ -118,6 +164,7 @@ export const useDirectorClient = (): DirectorClient => {
       cancelled = true;
       retries.forEach(clearTimeout);
       ext.unsubscribe('v1.ext.whispered', onWhispered);
+      ext.unsubscribe('v1.ext.whispered.local', onWhispered);
       ext.unsubscribe('v1.ext.context.updated', onContextUpdated);
     };
   }, []);
